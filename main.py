@@ -67,199 +67,32 @@ class Config:
     
     def __init__(self, input_data: Dict[str, Any]):
         """Initialize configuration from input data."""
-        # Scraping mode
-        self.scrape_mode = input_data.get("scrape_mode", "search")
+        # URL scraping (only mode)
         self.direct_url = input_data.get("direct_url", "").strip()
         
-        # Search parameters
-        self.search_text = input_data.get("search_text", "")
-        self.category = input_data.get("category", "TOUTES_CATEGORIES")
-        self.sort = input_data.get("sort", "NEWEST")
-        self.ad_type = input_data.get("ad_type", "OFFER")
-        self.owner_type = input_data.get("owner_type")
-        self.search_in_title_only = input_data.get("search_in_title_only", False)
-        
-        # Location parameters - simplified
-        self.location_type_input = input_data.get("location_type", "none")
-        self.locations = self._parse_locations(input_data)
-        
-        # Determine actual location type for LocationBuilder
-        if self.location_type_input == "departments":
-            self.location_type = "department"
-        elif self.location_type_input == "cities":
-            self.location_type = "city"
-        else:
-            self.location_type = "none"
-        
-        # Filter parameters - build from individual fields
-        self.filters = self._build_filters(input_data)
-        
-        # Price range
-        self.price_min = input_data.get("price_min")
-        self.price_max = input_data.get("price_max")
-        
         # Pagination
-        self.max_pages = input_data.get("max_pages", 0)  # 0 = unlimited
-        self.limit_per_page = input_data.get("limit_per_page", 35)
+        self.max_pages = input_data.get("max_pages", 10)
+        self.limit_per_page = 35
         self.delay_between_pages = input_data.get("delay_between_pages", 1)
-        self.delay_between_locations = input_data.get("delay_between_locations", 2)
         
         # Age filtering
         self.max_age_days = input_data.get("max_age_days", 0)  # 0 = disabled
-        self.consecutive_old_limit = input_data.get("consecutive_old_limit", 5)
+        self.consecutive_old_limit = 5
         
         # Proxy settings (Apify ProxyConfiguration)
         self.proxy_configuration = input_data.get("proxyConfiguration")
         
         # Output settings
-        self.output_format = input_data.get("output_format", "detailed")  # detailed, compact
-        self.include_raw_data = input_data.get("include_raw_data", False)
+        self.output_format = input_data.get("output_format", "detailed")
     
-    def _parse_locations(self, input_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Parse locations from simple string inputs (departments or cities)."""
-        location_type = input_data.get("location_type", "none")
-        
-        if location_type == "departments":
-            department_codes = input_data.get("department_codes", "").strip()
-            if not department_codes:
-                return []
-            
-            locations = []
-            codes = [code.strip() for code in department_codes.split(",")]
-            for code in codes:
-                if code:
-                    clean_code = ''.join(filter(str.isdigit, code))
-                    if clean_code:
-                        locations.append({"code": clean_code})
-            return locations
-        
-        elif location_type == "cities":
-            cities_str = input_data.get("cities", "").strip()
-            if not cities_str:
-                return []
-            
-            # Format: Ville|Lat|Lng|Rayon, Ville2|Lat2|Lng2|Rayon2
-            locations = []
-            city_entries = [entry.strip() for entry in cities_str.split(",")]
-            
-            for entry in city_entries:
-                parts = entry.split("|")
-                if len(parts) == 4:
-                    try:
-                        locations.append({
-                            "name": parts[0].strip(),
-                            "lat": float(parts[1].strip()),
-                            "lng": float(parts[2].strip()),
-                            "radius": int(parts[3].strip())
-                        })
-                    except ValueError:
-                        continue
-            return locations
-        
-        return []
-    
-    def _build_filters(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Build filters object from individual input fields."""
-        filters = {}
-        
-        # Immobilier filters
-        if input_data.get("filter_real_estate_type"):
-            filters["real_estate_type"] = input_data["filter_real_estate_type"]
-        
-        if input_data.get("filter_square_min") or input_data.get("filter_square_max"):
-            square = []
-            if input_data.get("filter_square_min"):
-                square.append(input_data["filter_square_min"])
-            if input_data.get("filter_square_max"):
-                if not square:
-                    square.append(0)
-                square.append(input_data["filter_square_max"])
-            if len(square) == 2:
-                filters["square"] = square
-        
-        if input_data.get("filter_rooms_min") or input_data.get("filter_rooms_max"):
-            rooms = []
-            if input_data.get("filter_rooms_min"):
-                rooms.append(input_data["filter_rooms_min"])
-            if input_data.get("filter_rooms_max"):
-                if not rooms:
-                    rooms.append(1)
-                rooms.append(input_data["filter_rooms_max"])
-            if len(rooms) == 2:
-                filters["rooms"] = rooms
-        
-        if input_data.get("filter_bedrooms_min") or input_data.get("filter_bedrooms_max"):
-            bedrooms = []
-            if input_data.get("filter_bedrooms_min"):
-                bedrooms.append(input_data["filter_bedrooms_min"])
-            if input_data.get("filter_bedrooms_max"):
-                if not bedrooms:
-                    bedrooms.append(1)
-                bedrooms.append(input_data["filter_bedrooms_max"])
-            if len(bedrooms) == 2:
-                filters["bedrooms"] = bedrooms
-        
-        if input_data.get("filter_energy_rate"):
-            filters["energy_rate"] = input_data["filter_energy_rate"]
-        
-        if input_data.get("filter_furnished"):
-            filters["furnished"] = input_data["filter_furnished"]
-        
-        # Véhicules filters
-        if input_data.get("filter_mileage_min") or input_data.get("filter_mileage_max"):
-            mileage = []
-            if input_data.get("filter_mileage_min"):
-                mileage.append(input_data["filter_mileage_min"])
-            if input_data.get("filter_mileage_max"):
-                if not mileage:
-                    mileage.append(0)
-                mileage.append(input_data["filter_mileage_max"])
-            if len(mileage) == 2:
-                filters["mileage"] = mileage
-        
-        if input_data.get("filter_regdate_min") or input_data.get("filter_regdate_max"):
-            regdate = []
-            if input_data.get("filter_regdate_min"):
-                regdate.append(input_data["filter_regdate_min"])
-            if input_data.get("filter_regdate_max"):
-                if not regdate:
-                    regdate.append(1950)
-                regdate.append(input_data["filter_regdate_max"])
-            if len(regdate) == 2:
-                filters["regdate"] = regdate
-        
-        if input_data.get("filter_fuel"):
-            filters["fuel"] = input_data["filter_fuel"]
-        
-        if input_data.get("filter_gearbox"):
-            filters["gearbox"] = input_data["filter_gearbox"]
-        
-        if input_data.get("filter_doors"):
-            filters["doors"] = input_data["filter_doors"]
-        
-        if input_data.get("filter_seats"):
-            filters["seats"] = input_data["filter_seats"]
-        
-        return filters
-        
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary."""
         return {
-            "scrape_mode": getattr(self, "scrape_mode", "search"),
-            "direct_url": getattr(self, "direct_url", ""),
-            "search_text": self.search_text,
-            "category": self.category,
-            "sort": self.sort,
-            "ad_type": self.ad_type,
-            "owner_type": self.owner_type,
-            "location_type": self.location_type,
-            "locations": self.locations,
-            "filters": self.filters,
-            "price_range": f"{self.price_min or 0}-{self.price_max or 'max'}",
+            "direct_url": self.direct_url,
             "max_pages": self.max_pages,
             "delay_between_pages": self.delay_between_pages,
-            "delay_between_locations": self.delay_between_locations,
-            "max_age_days": self.max_age_days
+            "max_age_days": self.max_age_days,
+            "output_format": self.output_format
         }
 
 
@@ -273,10 +106,8 @@ class Logger:
     @staticmethod
     def setup(verbose: bool = True) -> logging.Logger:
         """Configure logger for Apify environment."""
-        # Try to use Apify logger
         try:
             from apify import Actor
-            # Apify's logger is already configured, just return a simple logger
             logger = logging.getLogger("LeboncoinScraper")
             logger.setLevel(logging.INFO if verbose else logging.WARNING)
             if not logger.handlers:
@@ -285,11 +116,9 @@ class Logger:
                 logger.addHandler(handler)
             return logger
         except ImportError:
-            # Fallback for local execution
             logger = logging.getLogger("LeboncoinScraper")
             logger.setLevel(logging.INFO if verbose else logging.WARNING)
             logger.handlers.clear()
-            
             handler = logging.StreamHandler()
             handler.setLevel(logging.INFO if verbose else logging.WARNING)
             formatter = logging.Formatter('[%(levelname)s] %(message)s')
@@ -300,7 +129,7 @@ class Logger:
 
 
 # ============================================================================
-# CATEGORY & ENUM UTILITIES
+# CATEGORY & ENUM UTILITIES (kept for compatibility)
 # ============================================================================
 
 class EnumMapper:
@@ -339,49 +168,6 @@ class EnumMapper:
             return getattr(lbc.OwnerType, owner_type_str.upper())
         except AttributeError:
             return None
-
-
-# ============================================================================
-# LOCATION UTILITIES
-# ============================================================================
-
-class LocationBuilder:
-    """Build location objects for search."""
-    
-    @staticmethod
-    def build_location(location_data: Dict[str, Any], location_type: str) -> Any:
-        """Build location object based on type."""
-        if location_type == "city":
-            return lbc.City(
-                lat=location_data.get("lat"),
-                lng=location_data.get("lng"),
-                radius=location_data.get("radius", 10000),
-                city=location_data.get("name", "")
-            )
-        
-        elif location_type == "department":
-            # For departments, return a string in format "d_XX" to be used in URL
-            dept_code = location_data.get("code", "").zfill(2)  # Ensure 2 digits
-            return f"d_{dept_code}" if dept_code else None
-        
-        elif location_type == "region":
-            region_name = location_data.get("name", "").upper().replace(" ", "_")
-            try:
-                return getattr(lbc.Region, region_name)
-            except AttributeError:
-                return None
-        
-        return None
-    
-    @staticmethod
-    def build_locations_list(locations: List[Dict[str, Any]], location_type: str) -> List[Any]:
-        """Build list of location objects."""
-        result = []
-        for loc_data in locations:
-            loc = LocationBuilder.build_location(loc_data, location_type)
-            if loc:
-                result.append(loc)
-        return result
 
 
 # ============================================================================
@@ -968,54 +754,19 @@ class ScraperEngine:
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
-        """Execute complete scraping pipeline."""
-        self.logger.info("Starting Leboncoin scraper")
+        """Execute URL scraping pipeline."""
+        self.logger.info("Starting Leboncoin URL scraper")
         
         # Log configuration
         config_summary = self.config.to_dict()
-        self.logger.info(f"Configuration: {config_summary}")
+        self.logger.info(f"URL: {self.config.direct_url}")
+        self.logger.info(f"Max pages: {self.config.max_pages}")
         
         # Initialize client
         await self.initialize_client()
         
-        # Check scraping mode
-        all_ads = []
-        if self.config.scrape_mode == "url" and self.config.direct_url:
-            self.logger.info(f"Mode: Direct URL scraping")
-            self.logger.info(f"URL: {self.config.direct_url}")
-            all_ads = await self.scrape_from_url()
-        else:
-            self.logger.info(f"Mode: Search by criteria")
-            
-            # Build locations
-            locations_list = LocationBuilder.build_locations_list(
-                self.config.locations,
-                self.config.location_type
-            )
-            
-            if not locations_list:
-                self.logger.warning("No valid locations provided, searching globally")
-                locations_list = [None]
-            
-            self.logger.info(f"Processing {len(locations_list)} location(s)")
-            
-            # Scrape each location
-            for idx, location in enumerate(locations_list, 1):
-                location_name = self._get_location_name(location, idx)
-                
-                try:
-                    ads = await self.scrape_location(location, location_name)
-                    all_ads.extend(ads)
-                    self.stats["locations_processed"] += 1
-                    
-                    # Delay between locations
-                    if idx < len(locations_list):
-                        await asyncio.sleep(self.config.delay_between_locations)
-                    
-                except Exception as e:
-                    self.logger.error(f"Failed to scrape location {location_name}: {e}")
-                    self.stats["errors"] += 1
-                    continue
+        # Scrape from URL
+        all_ads = await self.scrape_from_url()
         
         # Final summary
         self.logger.info("Scraping completed successfully")
