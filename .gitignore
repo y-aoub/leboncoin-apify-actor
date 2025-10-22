@@ -67,6 +67,7 @@ test_fix.py
 test_images.py
 test_complete.py
 test_scraper.py
+test_local.py
 
 # Development files (not needed on Apify)
 ui.py

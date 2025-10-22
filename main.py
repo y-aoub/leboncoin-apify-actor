@@ -79,8 +79,8 @@ class Config:
         self.locations = input_data.get("locations", [])
         self.location_type = input_data.get("location_type", "department")  # city, department, region
         
-        # Filter parameters (kwargs for dynamic filters)
-        self.filters = input_data.get("filters", {})
+        # Filter parameters - build from individual fields
+        self.filters = self._build_filters(input_data)
         
         # Price range
         self.price_min = input_data.get("price_min")
@@ -102,6 +102,67 @@ class Config:
         # Output settings
         self.output_format = input_data.get("output_format", "detailed")  # detailed, compact
         self.include_raw_data = input_data.get("include_raw_data", False)
+    
+    def _build_filters(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Build filters object from individual input fields."""
+        filters = {}
+        
+        # Immobilier filters
+        if input_data.get("filter_square_min") or input_data.get("filter_square_max"):
+            square = []
+            if input_data.get("filter_square_min"):
+                square.append(input_data["filter_square_min"])
+            if input_data.get("filter_square_max"):
+                if not square:
+                    square.append(0)
+                square.append(input_data["filter_square_max"])
+            if len(square) == 2:
+                filters["square"] = square
+        
+        if input_data.get("filter_rooms_min") or input_data.get("filter_rooms_max"):
+            rooms = []
+            if input_data.get("filter_rooms_min"):
+                rooms.append(input_data["filter_rooms_min"])
+            if input_data.get("filter_rooms_max"):
+                if not rooms:
+                    rooms.append(1)
+                rooms.append(input_data["filter_rooms_max"])
+            if len(rooms) == 2:
+                filters["rooms"] = rooms
+        
+        if input_data.get("filter_energy_rate"):
+            filters["energy_rate"] = input_data["filter_energy_rate"]
+        
+        # Véhicules filters
+        if input_data.get("filter_mileage_min") or input_data.get("filter_mileage_max"):
+            mileage = []
+            if input_data.get("filter_mileage_min"):
+                mileage.append(input_data["filter_mileage_min"])
+            if input_data.get("filter_mileage_max"):
+                if not mileage:
+                    mileage.append(0)
+                mileage.append(input_data["filter_mileage_max"])
+            if len(mileage) == 2:
+                filters["mileage"] = mileage
+        
+        if input_data.get("filter_regdate_min") or input_data.get("filter_regdate_max"):
+            regdate = []
+            if input_data.get("filter_regdate_min"):
+                regdate.append(input_data["filter_regdate_min"])
+            if input_data.get("filter_regdate_max"):
+                if not regdate:
+                    regdate.append(1950)
+                regdate.append(input_data["filter_regdate_max"])
+            if len(regdate) == 2:
+                filters["regdate"] = regdate
+        
+        if input_data.get("filter_fuel"):
+            filters["fuel"] = input_data["filter_fuel"]
+        
+        if input_data.get("filter_gearbox"):
+            filters["gearbox"] = input_data["filter_gearbox"]
+        
+        return filters
         
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary."""
@@ -340,15 +401,33 @@ class AdTransformer:
             ad.attributes if hasattr(ad, 'attributes') else []
         )
         
-        # Filter attributes to remove technical/internal fields
+        # Filter attributes to remove technical/internal/redundant fields
+        excluded_attributes = {
+            # Technical/internal fields
+            'rating_score', 'rating_count', 'profile_picture_url',
+            'estimated_parcel_weight', 'estimated_parcel_size',
+            'is_bundleable', 'purchase_cta_visible', 'negotiation_cta_visible',
+            'country_isocode3166', 'is_import', 'payment_methods',
+            
+            # Redundant fields (duplicates with "u_" prefix)
+            'u_car_brand', 'u_car_model', 'u_car_version',
+            
+            # Activity/Store technical fields
+            'activity_sector', 'store_logo', 'store_name', 'online_store_id',
+            'custom_ref', 'has_visibility_option',
+            
+            # Argus/pricing technical fields
+            'old_price', 'car_price_min', 'car_price_max', 'car_price_positioning',
+            'argus_object_id', 'monthly_payment_price',
+            
+            # Other technical fields
+            'licence_plate_available', 'spare_parts_availability',
+            'recent_used_vehicle', 'vehicle_vsp'
+        }
+        
         filtered_attributes = {
             k: v for k, v in attributes.items()
-            if k not in [
-                'rating_score', 'rating_count', 'profile_picture_url',
-                'estimated_parcel_weight', 'estimated_parcel_size',
-                'is_bundleable', 'purchase_cta_visible', 'negotiation_cta_visible',
-                'country_isocode3166', 'is_import', 'payment_methods'
-            ]
+            if k not in excluded_attributes
         }
         
         # Base data (flattened - single level depth)

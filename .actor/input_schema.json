@@ -295,15 +295,100 @@
         {"code": "75"}
       ]
     },
-    "filters": {
-      "title": "Custom Filters",
-      "type": "object",
-      "description": "Category-specific filters (JSON object)",
-      "editor": "json",
-      "example": {
-        "square": [100, 200],
-        "rooms": [3, 5]
-      }
+    "filter_square_min": {
+      "title": "Surface minimum (m²)",
+      "type": "integer",
+      "description": "Pour immobilier : surface habitable minimum",
+      "editor": "number",
+      "minimum": 0
+    },
+    "filter_square_max": {
+      "title": "Surface maximum (m²)",
+      "type": "integer",
+      "description": "Pour immobilier : surface habitable maximum",
+      "editor": "number",
+      "minimum": 0
+    },
+    "filter_rooms_min": {
+      "title": "Nombre de pièces minimum",
+      "type": "integer",
+      "description": "Pour immobilier : nombre minimum de pièces",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "filter_rooms_max": {
+      "title": "Nombre de pièces maximum",
+      "type": "integer",
+      "description": "Pour immobilier : nombre maximum de pièces",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "filter_energy_rate": {
+      "title": "DPE (Diagnostic Performance Énergétique)",
+      "type": "array",
+      "description": "Pour immobilier : sélectionnez les classes énergétiques",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": ["a", "b", "c", "d", "e", "f", "g"]
+      },
+      "uniqueItems": true
+    },
+    "filter_mileage_min": {
+      "title": "Kilométrage minimum",
+      "type": "integer",
+      "description": "Pour véhicules : kilométrage minimum",
+      "editor": "number",
+      "minimum": 0
+    },
+    "filter_mileage_max": {
+      "title": "Kilométrage maximum",
+      "type": "integer",
+      "description": "Pour véhicules : kilométrage maximum",
+      "editor": "number",
+      "minimum": 0
+    },
+    "filter_regdate_min": {
+      "title": "Année minimum",
+      "type": "integer",
+      "description": "Pour véhicules : année de mise en circulation minimum",
+      "editor": "number",
+      "minimum": 1950,
+      "maximum": 2026
+    },
+    "filter_regdate_max": {
+      "title": "Année maximum",
+      "type": "integer",
+      "description": "Pour véhicules : année de mise en circulation maximum",
+      "editor": "number",
+      "minimum": 1950,
+      "maximum": 2026
+    },
+    "filter_fuel": {
+      "title": "Type de carburant",
+      "type": "array",
+      "description": "Pour véhicules : types de carburant acceptés",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": ["1", "2", "3", "4", "5", "6"],
+        "enumNames": ["Essence", "Diesel", "GPL", "Électrique", "Hybride", "Autre"]
+      },
+      "uniqueItems": true
+    },
+    "filter_gearbox": {
+      "title": "Boîte de vitesse",
+      "type": "array",
+      "description": "Pour véhicules : type de boîte de vitesse",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": ["1", "2"],
+        "enumNames": ["Manuelle", "Automatique"]
+      },
+      "uniqueItems": true
     },
     "price_min": {
       "title": "Minimum Price (€)",
