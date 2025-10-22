@@ -369,24 +369,22 @@
     "filter_fuel": {
       "title": "Type de carburant",
       "type": "array",
-      "description": "Pour véhicules : types de carburant acceptés",
+      "description": "Pour véhicules : 1=Essence, 2=Diesel, 3=GPL, 4=Électrique, 5=Hybride, 6=Autre",
       "editor": "select",
       "items": {
         "type": "string",
-        "enum": ["1", "2", "3", "4", "5", "6"],
-        "enumNames": ["Essence", "Diesel", "GPL", "Électrique", "Hybride", "Autre"]
+        "enum": ["1", "2", "3", "4", "5", "6"]
       },
       "uniqueItems": true
     },
     "filter_gearbox": {
       "title": "Boîte de vitesse",
       "type": "array",
-      "description": "Pour véhicules : type de boîte de vitesse",
+      "description": "Pour véhicules : 1=Manuelle, 2=Automatique",
       "editor": "select",
       "items": {
         "type": "string",
-        "enum": ["1", "2"],
-        "enumNames": ["Manuelle", "Automatique"]
+        "enum": ["1", "2"]
       },
       "uniqueItems": true
     },
