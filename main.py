@@ -245,6 +245,8 @@ class Config:
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary."""
         return {
+            "scrape_mode": getattr(self, "scrape_mode", "search"),
+            "direct_url": getattr(self, "direct_url", ""),
             "search_text": self.search_text,
             "category": self.category,
             "sort": self.sort,
@@ -255,6 +257,8 @@ class Config:
             "filters": self.filters,
             "price_range": f"{self.price_min or 0}-{self.price_max or 'max'}",
             "max_pages": self.max_pages,
+            "delay_between_pages": self.delay_between_pages,
+            "delay_between_locations": self.delay_between_locations,
             "max_age_days": self.max_age_days
         }
 
@@ -761,19 +765,24 @@ class ScraperEngine:
                     result = self.client.search(url=search_url, page=page, limit=self.config.limit_per_page)
                 else:
                     result = self.client.search(**search_params, page=page)
-                
+
+                # Normalize iterator result
+                ads_iter = getattr(result, 'ads', None)
+                if ads_iter is None:
+                    # Some versions return an iterator directly
+                    ads_iter = result
+
                 if page == 1:
-                    total_pages = result.max_pages if hasattr(result, 'max_pages') else None
-                    total_results = result.total if hasattr(result, 'total') else 0
-                    self.logger.info(f"Found {total_results} total ads across {total_pages} pages")
-                
-                if not result.ads:
-                    self.logger.info(f"No more ads found on page {page}")
-                    break
-                
+                    total_pages = getattr(result, 'max_pages', None)
+                    total_results = getattr(result, 'total', None) or 0
+                    self.logger.info(f"Found {total_results} total ads across {total_pages or '?'} pages")
+
+                # Collect ads for this page
                 page_ads = 0
-                for ad in result.ads:
+                had_any = False
+                for ad in ads_iter:
                     try:
+                        had_any = True
                         # Skip if ad is not a proper object
                         if not hasattr(ad, 'id') or isinstance(ad, str):
                             self.logger.warning(f"Skipping invalid ad object of type: {type(ad)}")
@@ -818,6 +827,10 @@ class ScraperEngine:
                         self.stats["errors"] += 1
                         continue
                 
+                if not had_any:
+                    self.logger.info(f"No more ads found on page {page}")
+                    break
+
                 self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
                 self.stats["pages_processed"] += 1
                 
@@ -831,7 +844,7 @@ class ScraperEngine:
                     break
                 
                 page += 1
-                time.sleep(self.config.delay_between_pages)
+                await asyncio.sleep(self.config.delay_between_pages)
                 
             except Exception as e:
                 self.logger.error(f"Error fetching page {page}: {e}")
@@ -848,18 +861,40 @@ class ScraperEngine:
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
+        # Validate URL: only support /recherche URLs, not category pages
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(self.config.direct_url)
+            if not parsed.scheme.startswith("http"):
+                raise ValueError("URL invalide: doit commencer par http/https")
+            if not parsed.netloc.endswith("leboncoin.fr"):
+                raise ValueError("URL invalide: domaine non supporté (leboncoin.fr attendu)")
+            if "/recherche" not in parsed.path:
+                raise ValueError("URL non supportée: utilisez une URL de recherche (contenant /recherche)")
+        except Exception as e:
+            self.logger.error(f"Direct URL validation error: {e}")
+            self.stats["errors"] += 1
+            return all_ads
+
         while page <= max_pages:
             self.logger.info(f"Scraping page {page} from URL")
             
             try:
                 # Scrape using URL
-                search_result = self.client.search(url=self.config.direct_url, limit=35, page=page)
+                result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page)
+                
+                # Normalize iterator result
+                ads_iter = getattr(result, 'ads', None)
+                if ads_iter is None:
+                    ads_iter = result
                 
                 page_ads = 0
                 old_ads_count = 0
+                had_any = False
                 
-                for ad in search_result:
+                for ad in ads_iter:
                     try:
+                        had_any = True
                         # Validate ad
                         if not hasattr(ad, 'id') or not ad.id:
                             continue
@@ -901,6 +936,10 @@ class ScraperEngine:
                         self.stats["errors"] += 1
                         continue
                 
+                if not had_any:
+                    self.logger.info("No more ads found")
+                    break
+                
                 self.logger.info(f"Extracted {page_ads} ads from page {page}")
                 self.stats["pages_processed"] += 1
                 
@@ -915,7 +954,7 @@ class ScraperEngine:
                     break
                 
                 page += 1
-                time.sleep(self.config.delay_between_pages)
+                await asyncio.sleep(self.config.delay_between_pages)
                 
             except StopIteration:
                 self.logger.info("Reached end of results")
@@ -971,7 +1010,7 @@ class ScraperEngine:
                     
                     # Delay between locations
                     if idx < len(locations_list):
-                        time.sleep(self.config.delay_between_locations)
+                        await asyncio.sleep(self.config.delay_between_locations)
                     
                 except Exception as e:
                     self.logger.error(f"Failed to scrape location {location_name}: {e}")

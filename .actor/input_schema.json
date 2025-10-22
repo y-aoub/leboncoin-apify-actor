@@ -18,9 +18,13 @@
     "direct_url": {
       "title": "URL Leboncoin",
       "type": "string",
-      "description": "Collez l'URL complète d'une page de recherche Leboncoin (visible uniquement si 'URL directe' sélectionné)",
+      "description": "Collez une URL de recherche Leboncoin (format accepté: https://www.leboncoin.fr/recherche?...). Les URLs de pages catégories (ex: /cl/...) ne sont pas supportées.",
       "editor": "textfield",
-      "example": "https://www.leboncoin.fr/recherche?category=2&locations=Paris_75000&price=0-50000"
+      "prefill": "https://www.leboncoin.fr/recherche?category=2&text=iphone&locations=Paris_75000",
+      "examples": [
+        "https://www.leboncoin.fr/recherche?category=2&locations=Paris_75000",
+        "https://www.leboncoin.fr/recherche?text=peugeot+308&price=0-15000"
+      ]
     },
     "category": {
       "title": "Catégorie",
