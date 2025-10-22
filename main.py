@@ -669,26 +669,43 @@ class ScraperEngine:
                 # Scrape using URL
                 result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page)
                 
-                # Normalize iterator result
-                ads_iter = getattr(result, 'ads', None)
-                if ads_iter is None:
-                    ads_iter = result
+                # Debug: log result type and structure
+                self.logger.info(f"Result type: {type(result)}")
+                self.logger.info(f"Result has 'ads': {hasattr(result, 'ads')}")
+                
+                # Try different ways to get ads
+                ads_list = None
+                if hasattr(result, 'ads') and result.ads is not None:
+                    ads_list = list(result.ads)
+                    self.logger.info(f"Got {len(ads_list)} ads from result.ads")
+                else:
+                    # Try to convert result itself to list
+                    try:
+                        ads_list = list(result)
+                        self.logger.info(f"Got {len(ads_list)} ads from direct iteration")
+                    except TypeError:
+                        self.logger.error(f"Cannot iterate over result of type {type(result)}")
+                        break
+                
+                if not ads_list:
+                    self.logger.info("No ads in result")
+                    break
                 
                 page_ads = 0
                 old_ads_count = 0
-                had_any = False
                 
-                for ad in ads_iter:
+                for ad in ads_list:
                     try:
-                        had_any = True
                         # Validate ad
                         if not hasattr(ad, 'id') or not ad.id:
+                            self.logger.warning(f"Skipping ad without ID")
                             continue
                         
                         ad_id = ad.id
                         
                         # Skip duplicates
                         if ad_id in self.seen_ids:
+                            self.stats["duplicates"] += 1
                             continue
                         
                         # Check age filter
@@ -705,7 +722,10 @@ class ScraperEngine:
                                     old_ads_count = 0
                         
                         # Transform ad
-                        ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
+                        if self.config.output_format == "detailed":
+                            ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
+                        else:
+                            ad_data = AdTransformer.create_compact_ad(ad, {"category": "URL", "location": "Direct URL"})
                         
                         # Add ad
                         self.seen_ids.add(ad_id)
@@ -718,15 +738,11 @@ class ScraperEngine:
                         await ApifyAdapter.push_data(ad_data)
                         
                     except Exception as e:
-                        self.logger.error(f"Error processing ad: {e}")
+                        self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
                         self.stats["errors"] += 1
                         continue
                 
-                if not had_any:
-                    self.logger.info("No more ads found")
-                    break
-                
-                self.logger.info(f"Extracted {page_ads} ads from page {page}")
+                self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
                 self.stats["pages_processed"] += 1
                 
                 # Stop if no more ads
