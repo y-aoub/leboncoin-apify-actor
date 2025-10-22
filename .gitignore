@@ -66,6 +66,15 @@ test_*.json
 test_fix.py
 test_images.py
 test_complete.py
+test_scraper.py
+
+# Development files (not needed on Apify)
+ui.py
+QUICKSTART.md
+USAGE.md
+FILES_OVERVIEW.md
+INDEX.md
+CATEGORIES_REFERENCE.md
 
 # Logs
 *.log
