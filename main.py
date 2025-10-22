@@ -249,6 +249,32 @@ class DataProcessor:
             return ad_date < cutoff
         except ValueError:
             return False
+    
+    @staticmethod
+    def convert_to_serializable(value: Any) -> Any:
+        """Convert any value to JSON-serializable format."""
+        if value is None:
+            return None
+        elif isinstance(value, (str, int, float, bool)):
+            return value
+        elif isinstance(value, (list, tuple)):
+            return [DataProcessor.convert_to_serializable(item) for item in value]
+        elif isinstance(value, dict):
+            return {k: DataProcessor.convert_to_serializable(v) for k, v in value.items()}
+        elif isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        elif hasattr(value, '__dict__'):
+            # For custom objects, convert to dict
+            result = {}
+            for attr_name in dir(value):
+                if not attr_name.startswith('_') and not callable(getattr(value, attr_name)):
+                    attr_value = getattr(value, attr_name, None)
+                    if attr_value is not None:
+                        result[attr_name] = DataProcessor.convert_to_serializable(attr_value)
+            return result
+        else:
+            # For any other type, convert to string
+            return str(value)
 
 
 # ============================================================================
@@ -260,106 +286,23 @@ class AdTransformer:
     
     @staticmethod
     def create_detailed_ad(ad: Any, search_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Create detailed ad dictionary with all available fields."""
-        location = ad.location if hasattr(ad, 'location') else None
-        user = ad.user if hasattr(ad, 'user') else None
+        """Create detailed ad dictionary with ALL available fields (raw data, no parsing)."""
+        ad_data = {}
         
-        # Extract all attributes
-        attributes = DataProcessor.extract_all_attributes(
-            ad.attributes if hasattr(ad, 'attributes') else []
-        )
+        # Extract ALL attributes from the ad object (raw, no filtering)
+        for attr_name in dir(ad):
+            if not attr_name.startswith('_') and not callable(getattr(ad, attr_name)):
+                value = getattr(ad, attr_name, None)
+                if value is not None:
+                    # Convert complex objects to JSON-serializable format
+                    ad_data[attr_name] = DataProcessor.convert_to_serializable(value)
         
-        # Filter attributes to remove technical/internal/redundant fields
-        excluded_attributes = {
-            # Technical/internal fields
-            'rating_score', 'rating_count', 'profile_picture_url',
-            'estimated_parcel_weight', 'estimated_parcel_size',
-            'is_bundleable', 'purchase_cta_visible', 'negotiation_cta_visible',
-            'country_isocode3166', 'is_import', 'payment_methods',
-            
-            # Redundant fields (duplicates with "u_" prefix)
-            'u_car_brand', 'u_car_model', 'u_car_version',
-            
-            # Activity/Store technical fields
-            'activity_sector', 'store_logo', 'store_name', 'online_store_id',
-            'custom_ref', 'has_visibility_option',
-            
-            # Argus/pricing technical fields
-            'old_price', 'car_price_min', 'car_price_max', 'car_price_positioning',
-            'argus_object_id', 'monthly_payment_price',
-            
-            # Other technical fields
-            'licence_plate_available', 'spare_parts_availability',
-            'recent_used_vehicle', 'vehicle_vsp'
-        }
+        # Add timestamp when scraped
+        ad_data["scraped_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        filtered_attributes = {
-            k: v for k, v in attributes.items()
-            if k not in excluded_attributes
-        }
-        
-        # Base data (flattened - single level depth)
-        ad_data = {
-            # IDs and basic info
-            "id": ad.id if hasattr(ad, 'id') else None,
-            "url": ad.url if hasattr(ad, 'url') else None,
-            "title": ad.title if hasattr(ad, 'title') else None,
-            "subject": ad.subject if hasattr(ad, 'subject') else None,
-            "body": ad.body if hasattr(ad, 'body') else None,
-            
-            # Category
-            "category_id": ad.category_id if hasattr(ad, 'category_id') else None,
-            "category_name": ad.category_name if hasattr(ad, 'category_name') else None,
-            
-            # Price
-            "price": ad.price if hasattr(ad, 'price') else None,
-            
-            # Status and type
-            "ad_type": ad.ad_type if hasattr(ad, 'ad_type') else None,
-            "status": ad.status if hasattr(ad, 'status') else None,
-            
-            # Dates
-            "first_publication_date": DataProcessor.normalize_datetime(
-                ad.first_publication_date if hasattr(ad, 'first_publication_date') else None
-            ),
-            "index_date": DataProcessor.normalize_datetime(
-                ad.index_date if hasattr(ad, 'index_date') else None
-            ),
-            "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            
-            # Contact info
-            "has_phone": ad.has_phone if hasattr(ad, 'has_phone') else None,
-            
-            # Location
-            "city": location.city if location else None,
-            "zipcode": location.zipcode if location else None,
-            "department_id": location.department_id if location else None,
-            "department_name": location.department_name if location else None,
-            "region_name": location.region_name if location else None,
-            "latitude": location.lat if location else None,
-            "longitude": location.lng if location else None,
-            
-            # Images (as comma-separated string or keep as list)
-            "images": ad.images if hasattr(ad, 'images') and ad.images else [],
-            "image_count": len(ad.images) if hasattr(ad, 'images') and ad.images else 0,
-            
-            # User/Seller info (flattened with user_ prefix)
-            "user_id": user.id if user and hasattr(user, 'id') else None,
-            "user_name": user.name if user and hasattr(user, 'name') else None,
-            "user_is_pro": user.is_pro if user and hasattr(user, 'is_pro') else None,
-            "user_registered_at": DataProcessor.normalize_datetime(
-                user.registered_at if user and hasattr(user, 'registered_at') else None
-            ),
-            "user_total_ads": user.total_ads if user and hasattr(user, 'total_ads') else None,
-            
-            # Search context
-            "search_category": search_context.get("category"),
-            "search_location": search_context.get("location"),
-        }
-        
-        # Add flattened attributes with attribute_ prefix
-        for key, value in filtered_attributes.items():
-            ad_data[f"attribute_{key}"] = value
+        # Add search context
+        ad_data["search_category"] = search_context.get("category", "Unknown")
+        ad_data["search_location"] = search_context.get("location", "Unknown")
         
         return ad_data
     
