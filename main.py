@@ -671,30 +671,22 @@ class ScraperEngine:
                 
                 # Debug: log result type and structure
                 self.logger.info(f"Result type: {type(result)}")
-                self.logger.info(f"Result has 'ads': {hasattr(result, 'ads')}")
                 
-                # Try different ways to get ads
-                ads_list = None
+                # Get ads iterator - don't convert to list as it's a generator
                 if hasattr(result, 'ads') and result.ads is not None:
-                    ads_list = list(result.ads)
-                    self.logger.info(f"Got {len(ads_list)} ads from result.ads")
+                    ads_iter = result.ads
+                    self.logger.info("Using result.ads iterator")
                 else:
-                    # Try to convert result itself to list
-                    try:
-                        ads_list = list(result)
-                        self.logger.info(f"Got {len(ads_list)} ads from direct iteration")
-                    except TypeError:
-                        self.logger.error(f"Cannot iterate over result of type {type(result)}")
-                        break
-                
-                if not ads_list:
-                    self.logger.info("No ads in result")
-                    break
+                    ads_iter = result
+                    self.logger.info("Using result as iterator")
                 
                 page_ads = 0
                 old_ads_count = 0
+                ads_found = False
                 
-                for ad in ads_list:
+                # Iterate directly on the generator
+                for ad in ads_iter:
+                    ads_found = True
                     try:
                         # Validate ad
                         if not hasattr(ad, 'id') or not ad.id:
@@ -742,12 +734,17 @@ class ScraperEngine:
                         self.stats["errors"] += 1
                         continue
                 
+                if not ads_found:
+                    self.logger.warning("No ads found in iterator - URL search may not be working correctly")
+                    self.logger.info("This might indicate the lbc library doesn't support URL-based search properly")
+                    break
+                
                 self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
                 self.stats["pages_processed"] += 1
                 
                 # Stop if no more ads
                 if page_ads == 0:
-                    self.logger.info("No more ads found")
+                    self.logger.info("No more ads found (all filtered or duplicates)")
                     break
                 
                 # Check pagination limits
