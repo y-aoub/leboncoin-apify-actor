@@ -344,7 +344,6 @@ class ScraperEngine:
         self.logger = logger
         self.client = None
         self.seen_ids = set()
-        self._parsed_params = {}  # URL parameters parsed from direct_url
         self.stats = {
             "total_ads": 0,
             "unique_ads": 0,
@@ -601,14 +600,13 @@ class ScraperEngine:
             Tuple of (list of ads, boolean indicating if scraping should stop)
         """
         try:
-            # Use parsed params instead of URL to ensure all filters are applied
-            search_kwargs = {
-                'limit': self.config.limit_per_page,
-                'page': page_num,
-                **self._parsed_params  # Spread all URL parameters
-            }
-            
-            result = self.client.search(**search_kwargs)
+            # Use URL directly as documented in lbc library
+            # The library handles all filters internally
+            result = self.client.search(
+                url=self.config.direct_url,
+                page=page_num,
+                limit=self.config.limit_per_page
+            )
             
             # Log info on first page only
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
@@ -672,9 +670,9 @@ class ScraperEngine:
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
-        # Parse URL and extract parameters (to work around lbc library limitations)
+        # Validate URL only
         try:
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import urlparse
             parsed = urlparse(self.config.direct_url)
             
             if not parsed.scheme.startswith("http"):
@@ -684,36 +682,7 @@ class ScraperEngine:
             if "/recherche" not in parsed.path:
                 raise ValueError("URL non supportée: utilisez une URL de recherche (contenant /recherche)")
             
-            # Parse URL parameters
-            query_params = parse_qs(parsed.query)
-            
-            # Convert URL parameters to lbc-compatible format
-            self._parsed_params = {}
-            for key, value in query_params.items():
-                # Skip tracking params
-                if key in ['kst', 'from', 'utm_source', 'utm_medium', 'utm_campaign', 'page']:
-                    continue
-                
-                # Get single value or list
-                param_value = value[0] if len(value) == 1 else value
-                
-                # Convert range parameters (price, rooms, bedrooms, square, etc.) to [min, max] lists
-                if isinstance(param_value, str) and '-' in param_value:
-                    parts = param_value.split('-')
-                    if len(parts) == 2:
-                        try:
-                            # Try to convert to numbers
-                            min_val = int(parts[0]) if parts[0] else None
-                            max_val = int(parts[1]) if parts[1] else None
-                            if min_val is not None or max_val is not None:
-                                param_value = [min_val or 0, max_val] if max_val else [min_val]
-                        except ValueError:
-                            # Keep as string if not numbers
-                            pass
-                
-                self._parsed_params[key] = param_value
-            
-            self.logger.info(f"Parsed {len(self._parsed_params)} URL parameters")
+            self.logger.info("URL validated successfully")
             
         except Exception as e:
             self.logger.error(f"URL validation failed: {e}")
