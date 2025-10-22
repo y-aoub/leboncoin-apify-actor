@@ -24,19 +24,10 @@
       "sectionCaption": "⚙️ Paramètres de scraping",
       "sectionDescription": "Contrôlez le volume et la vitesse de scraping"
     },
-    "parallel_pages": {
-      "title": "Pages en parallèle",
-      "type": "integer",
-      "description": "Scraper plusieurs pages simultanément pour vitesse maximale (3-5 recommandé)",
-      "editor": "number",
-      "default": 3,
-      "minimum": 1,
-      "maximum": 10
-    },
     "delay_between_pages": {
-      "title": "Délai entre batches (secondes)",
+      "title": "Délai entre pages (secondes)",
       "type": "number",
-      "description": "Temps d'attente entre chaque batch de pages (0 = vitesse max, 1-2 = sécurité)",
+      "description": "Temps d'attente entre chaque page (0 = vitesse maximale recommandée)",
       "editor": "number",
       "default": 0,
       "minimum": 0,

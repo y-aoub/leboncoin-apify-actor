@@ -74,7 +74,6 @@ class Config:
         self.max_pages = input_data.get("max_pages", 10)
         self.limit_per_page = 35
         self.delay_between_pages = input_data.get("delay_between_pages", 0)  # 0 = no delay for max speed
-        self.parallel_pages = input_data.get("parallel_pages", 3)  # Number of pages to scrape in parallel
         
         # Age filtering
         self.max_age_days = input_data.get("max_age_days", 0)  # 0 = disabled
@@ -91,7 +90,6 @@ class Config:
         return {
             "direct_url": self.direct_url,
             "max_pages": self.max_pages,
-            "parallel_pages": self.parallel_pages,
             "delay_between_pages": self.delay_between_pages,
             "max_age_days": self.max_age_days,
             "output_format": self.output_format
@@ -642,31 +640,28 @@ class ScraperEngine:
         self.logger.info(f"Completed location {location_name}: {len(all_ads)} ads extracted")
         return all_ads
     
-    def _scrape_single_page_sync(self, page_num: int) -> tuple[List[Dict[str, Any]], bool, Dict[str, Any]]:
+    def _scrape_single_page(self, page_num: int) -> tuple[List[Dict[str, Any]], bool]:
         """
-        Scrape a single page (synchronous method for thread execution).
-        Returns (ads_list, should_stop, page_info).
+        Scrape a single page sequentially (optimized for low latency).
+        Returns (ads_list, should_stop).
         
         Args:
             page_num: Page number to scrape
             
         Returns:
-            Tuple of (list of ads, boolean indicating if scraping should stop, page info dict)
+            Tuple of (list of ads, boolean indicating if scraping should stop)
         """
-        page_info = {"page": page_num, "total_pages": None, "total_results": None}
-        
         try:
-            # Scrape using URL (synchronous call)
+            # Scrape using URL (direct synchronous call - no overhead)
             result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page_num)
+            
+            # Log page info on first page
+            if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
+                self.logger.info(f"Total pages: {result.max_pages}, Total results: {result.total}")
             
             # Check if we have ads
             if not result.ads:
-                return [], True, page_info
-            
-            # Get page info on first page
-            if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
-                page_info["total_pages"] = result.max_pages
-                page_info["total_results"] = result.total
+                return [], True
             
             page_ads = []
             old_ads_count = 0
@@ -680,9 +675,10 @@ class ScraperEngine:
                     
                     ad_id = ad.id
                     
-                    # Skip duplicates (thread-safe check)
+                    # Skip duplicates
                     if ad_id in self.seen_ids:
-                        continue  # Count duplicates later
+                        self.stats["duplicates"] += 1
+                        continue
                     
                     # Check age filter
                     if self.config.max_age_days > 0:
@@ -691,55 +687,36 @@ class ScraperEngine:
                             if ad_age_days > self.config.max_age_days:
                                 old_ads_count += 1
                                 if old_ads_count >= self.config.consecutive_old_limit:
-                                    return page_ads, True, page_info  # Stop scraping
+                                    self.logger.info(f"Age cutoff reached")
+                                    return page_ads, True  # Stop scraping
                                 continue
                             else:
                                 old_ads_count = 0
                     
-                    # Transform ad
+                    # Transform ad (direct call - no overhead)
                     if self.config.output_format == "detailed":
                         ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
                     else:
                         ad_data = AdTransformer.create_compact_ad(ad, {"category": "URL", "location": "Direct URL"})
                     
-                    # Add ad with ID
-                    ad_data['_temp_id'] = ad_id
+                    # Add to collection
+                    self.seen_ids.add(ad_id)
                     page_ads.append(ad_data)
                     
                 except Exception as e:
                     self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
+                    self.stats["errors"] += 1
                     continue
             
-            return page_ads, False, page_info
+            return page_ads, False
             
         except Exception as e:
             self.logger.error(f"Error on page {page_num}: {e}")
-            return [], True, page_info
-    
-    async def _scrape_single_page(self, page_num: int) -> tuple[List[Dict[str, Any]], bool, Dict[str, Any]]:
-        """
-        Async wrapper for scraping a single page using thread pool.
-        
-        This method uses asyncio.to_thread() to execute synchronous lbc.Client.search() calls
-        in separate threads, enabling true parallel execution without blocking the event loop.
-        
-        Why this approach:
-        - lbc.Client.search() is synchronous (blocking I/O)
-        - asyncio.to_thread() offloads blocking calls to ThreadPoolExecutor
-        - Multiple pages can be scraped simultaneously in different threads
-        - Event loop remains responsive for other async operations
-        
-        Args:
-            page_num: Page number to scrape
-            
-        Returns:
-            Tuple of (list of ads, boolean indicating if scraping should stop, page info)
-        """
-        # Execute synchronous scraping in a thread pool (Python 3.9+)
-        return await asyncio.to_thread(self._scrape_single_page_sync, page_num)
+            self.stats["errors"] += 1
+            return [], True
 
     async def scrape_from_url(self) -> List[Dict[str, Any]]:
-        """Scrape from a direct Leboncoin URL with parallel page fetching."""
+        """Scrape from a direct Leboncoin URL (sequential, low-latency optimized)."""
         all_ads = []
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
@@ -774,80 +751,59 @@ class ScraperEngine:
             self.stats["errors"] += 1
             return all_ads
 
-        # Parallel scraping by batches using thread pool
-        current_page = 1
-        parallel_pages = self.config.parallel_pages
+        # Sequential scraping (optimized for low latency)
+        page = 1
+        batch_size = 5  # Push to Apify every N pages for lower latency
+        batch_ads = []
         
-        self.logger.info(f"Starting parallel scraping with thread pool (batch size: {parallel_pages} pages)")
+        self.logger.info(f"Starting sequential scraping (optimized for low latency)")
         
-        while current_page <= max_pages:
-            # Calculate batch of pages to scrape
-            page_batch = list(range(current_page, min(current_page + parallel_pages, max_pages + 1)))
+        while page <= max_pages:
+            self.logger.info(f"Scraping page {page}...")
             
-            self.logger.info(f"Scraping pages {page_batch[0]}-{page_batch[-1]} in parallel...")
+            # Scrape single page (synchronous, no threading overhead)
+            page_ads, should_stop = self._scrape_single_page(page)
             
-            # Scrape pages in parallel using asyncio.to_thread
-            tasks = [self._scrape_single_page(page) for page in page_batch]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
-            batch_total = 0
-            should_stop = False
-            batch_ads = []
-            
-            for page_num, result in zip(page_batch, results):
-                # Handle exceptions
-                if isinstance(result, Exception):
-                    self.logger.error(f"Error scraping page {page_num}: {result}")
-                    self.stats["errors"] += 1
-                    continue
+            if page_ads:
+                all_ads.extend(page_ads)
+                batch_ads.extend(page_ads)
                 
-                page_ads, stop_flag, page_info = result
+                self.stats["total_ads"] += len(page_ads)
+                self.stats["unique_ads"] += len(page_ads)
+                self.stats["pages_processed"] += 1
                 
-                # Log page info on first page
-                if page_num == 1 and page_info.get("total_pages"):
-                    self.logger.info(f"Total pages: {page_info['total_pages']}, Total results: {page_info['total_results']}")
-                
-                if page_ads:
-                    # Process ads and remove duplicates
-                    unique_ads = []
-                    for ad in page_ads:
-                        ad_id = ad.pop('_temp_id', None)
-                        if ad_id and ad_id not in self.seen_ids:
-                            self.seen_ids.add(ad_id)
-                            unique_ads.append(ad)
-                            batch_total += 1
-                        elif ad_id:
-                            self.stats["duplicates"] += 1
-                    
-                    all_ads.extend(unique_ads)
-                    batch_ads.extend(unique_ads)
-                    self.stats["pages_processed"] += 1
-                
-                if stop_flag:
-                    should_stop = True
-                    break
+                self.logger.info(f"Extracted {len(page_ads)} ads from page {page}")
             
-            # Update stats
-            self.stats["total_ads"] += batch_total
-            self.stats["unique_ads"] += batch_total
+            # Push batch to Apify when batch is full (reduces network latency)
+            if len(batch_ads) >= batch_size * self.config.limit_per_page or should_stop:
+                if batch_ads:
+                    await ApifyAdapter.push_data(batch_ads)
+                    self.logger.info(f"Pushed batch of {len(batch_ads)} ads to Apify")
+                    batch_ads = []
             
-            # Push batch to Apify
-            if batch_ads:
-                await ApifyAdapter.push_data(batch_ads)
-            
-            self.logger.info(f"Batch complete: {batch_total} unique ads extracted from {len(page_batch)} pages")
-            
-            if should_stop or batch_total == 0:
+            if should_stop:
                 self.logger.info("Stopping: no more ads or age cutoff reached")
                 break
             
-            # Move to next batch
-            current_page += parallel_pages
+            if not page_ads:
+                self.logger.info("No more ads found")
+                break
             
-            # Small delay between batches if configured
-            if self.config.delay_between_pages > 0 and current_page <= max_pages:
+            # Check pagination limits
+            if page >= max_pages:
+                self.logger.info(f"Max pages limit reached ({max_pages})")
+                break
+            
+            page += 1
+            
+            # Minimal delay if configured (0 by default for max speed)
+            if self.config.delay_between_pages > 0:
                 await asyncio.sleep(self.config.delay_between_pages)
+        
+        # Push remaining ads
+        if batch_ads:
+            await ApifyAdapter.push_data(batch_ads)
+            self.logger.info(f"Pushed final batch of {len(batch_ads)} ads to Apify")
         
         self.logger.info(f"Completed URL scraping: {len(all_ads)} ads extracted")
         return all_ads
