@@ -9,7 +9,7 @@
   },
   "input": "./.actor/input_schema.json",
   "dockerfile": "./Dockerfile",
-  "readme": "./USAGE.md",
+  "readme": "./README.md",
   "storages": {
     "dataset": {
       "actorSpecification": 1,
