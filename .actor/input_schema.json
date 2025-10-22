@@ -60,84 +60,75 @@
     "price_min": {
       "title": "Prix minimum (€)",
       "type": "integer",
-      "description": "Filtrer les annonces avec un prix minimum",
+      "description": "Filtrer les annonces avec un prix minimum (laissez vide si pas de minimum)",
       "editor": "number",
       "minimum": 0,
-      "prefill": null,
       "sectionCaption": "💰 Budget",
       "sectionDescription": "Définissez votre fourchette de prix"
     },
     "price_max": {
       "title": "Prix maximum (€)",
       "type": "integer",
-      "description": "Filtrer les annonces avec un prix maximum",
+      "description": "Filtrer les annonces avec un prix maximum (laissez vide si pas de maximum)",
       "editor": "number",
-      "minimum": 0,
-      "prefill": null
+      "minimum": 0
     },
     "filter_square_min": {
       "title": "Surface minimale (m²)",
       "type": "integer",
-      "description": "Pour l'immobilier uniquement",
+      "description": "Pour l'immobilier uniquement (optionnel)",
       "editor": "number",
       "minimum": 0,
-      "prefill": null,
       "sectionCaption": "🏠 Filtres Immobilier",
       "sectionDescription": "Ces filtres s'appliquent uniquement si vous avez sélectionné une catégorie immobilière"
     },
     "filter_square_max": {
       "title": "Surface maximale (m²)",
       "type": "integer",
-      "description": "Pour l'immobilier uniquement",
+      "description": "Pour l'immobilier uniquement (optionnel)",
       "editor": "number",
-      "minimum": 0,
-      "prefill": null
+      "minimum": 0
     },
     "filter_rooms_min": {
       "title": "Nombre de pièces minimum",
       "type": "integer",
-      "description": "Pour l'immobilier uniquement",
+      "description": "Pour l'immobilier uniquement (optionnel)",
       "editor": "number",
       "minimum": 1,
-      "maximum": 10,
-      "prefill": null
+      "maximum": 10
     },
     "filter_rooms_max": {
       "title": "Nombre de pièces maximum",
       "type": "integer",
-      "description": "Pour l'immobilier uniquement",
+      "description": "Pour l'immobilier uniquement (optionnel)",
       "editor": "number",
       "minimum": 1,
-      "maximum": 10,
-      "prefill": null
+      "maximum": 10
     },
     "filter_mileage_max": {
       "title": "Kilométrage maximum",
       "type": "integer",
-      "description": "Pour les véhicules uniquement. Ex: 100000 pour 100 000 km",
+      "description": "Pour les véhicules uniquement. Ex: 100000 pour 100 000 km (optionnel)",
       "editor": "number",
       "minimum": 0,
-      "prefill": null,
       "sectionCaption": "🚗 Filtres Véhicules",
       "sectionDescription": "Ces filtres s'appliquent uniquement si vous avez sélectionné une catégorie véhicule"
     },
     "filter_regdate_min": {
       "title": "Année minimum",
       "type": "integer",
-      "description": "Année de mise en circulation minimum. Ex: 2018",
+      "description": "Année de mise en circulation minimum. Ex: 2018 (optionnel)",
       "editor": "number",
       "minimum": 1950,
-      "maximum": 2026,
-      "prefill": null
+      "maximum": 2026
     },
     "filter_regdate_max": {
       "title": "Année maximum",
       "type": "integer",
-      "description": "Année de mise en circulation maximum. Ex: 2024",
+      "description": "Année de mise en circulation maximum. Ex: 2024 (optionnel)",
       "editor": "number",
       "minimum": 1950,
-      "maximum": 2026,
-      "prefill": null
+      "maximum": 2026
     },
     "filter_fuel": {
       "title": "Type de carburant accepté",
