@@ -43,6 +43,9 @@ apify_storage/
 storage/
 .crawlee/
 
+# Streamlit
+ui.py
+
 # Output files
 *.json
 !config_examples.json
