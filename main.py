@@ -111,19 +111,9 @@ class Logger:
         logger.setLevel(logging.INFO if verbose else logging.WARNING)
         logger.handlers.clear()
         
-        # Create Apify-style formatter (only INFO in green)
-        class ApifyFormatter(logging.Formatter):
-            def format(self, record):
-                # Add milliseconds to the time
-                record.created_ms = int(record.created * 1000)
-                # Format with Apify style
-                record.asctime = time.strftime("%Y-%m-%dT%H:%M:%S", self.converter(record.created))
-                record.asctime = f"{record.asctime}.{record.created_ms % 1000:03d}"
-                return super().format(record)
-
-        formatter = ApifyFormatter(
-            "%(asctime)sZ [apify] %(levelname)-7s %(message)s",
-            datefmt=None
+        # Create simple formatter without timestamp
+        formatter = logging.Formatter(
+            "[apify] %(levelname)-7s %(message)s"
         )
         
         # Create a stream handler
