@@ -70,12 +70,14 @@ test_scraper.py
 test_local.py
 
 # Development files (not needed on Apify)
-ui.py
 QUICKSTART.md
 USAGE.md
 FILES_OVERVIEW.md
 INDEX.md
 CATEGORIES_REFERENCE.md
+INTERFACE_GUIDE.md
+GUIDE_UTILISATEUR.md
+CHANGELOG_PROFESSIONNEL.md
 
 # Logs
 *.log

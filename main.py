@@ -76,8 +76,16 @@ class Config:
         self.search_in_title_only = input_data.get("search_in_title_only", False)
         
         # Location parameters - simplified
+        self.location_type_input = input_data.get("location_type", "none")
         self.locations = self._parse_locations(input_data)
-        self.location_type = "department" if self.locations else "none"
+        
+        # Determine actual location type for LocationBuilder
+        if self.location_type_input == "departments":
+            self.location_type = "department"
+        elif self.location_type_input == "cities":
+            self.location_type = "city"
+        else:
+            self.location_type = "none"
         
         # Filter parameters - build from individual fields
         self.filters = self._build_filters(input_data)
@@ -103,31 +111,57 @@ class Config:
         self.output_format = input_data.get("output_format", "detailed")  # detailed, compact
         self.include_raw_data = input_data.get("include_raw_data", False)
     
-    def _parse_locations(self, input_data: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Parse department codes from simple string input."""
-        department_codes = input_data.get("department_codes", "").strip()
+    def _parse_locations(self, input_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Parse locations from simple string inputs (departments or cities)."""
+        location_type = input_data.get("location_type", "none")
         
-        if not department_codes:
-            return []
+        if location_type == "departments":
+            department_codes = input_data.get("department_codes", "").strip()
+            if not department_codes:
+                return []
+            
+            locations = []
+            codes = [code.strip() for code in department_codes.split(",")]
+            for code in codes:
+                if code:
+                    clean_code = ''.join(filter(str.isdigit, code))
+                    if clean_code:
+                        locations.append({"code": clean_code})
+            return locations
         
-        # Parse comma-separated department codes
-        locations = []
-        codes = [code.strip() for code in department_codes.split(",")]
+        elif location_type == "cities":
+            cities_str = input_data.get("cities", "").strip()
+            if not cities_str:
+                return []
+            
+            # Format: Ville|Lat|Lng|Rayon, Ville2|Lat2|Lng2|Rayon2
+            locations = []
+            city_entries = [entry.strip() for entry in cities_str.split(",")]
+            
+            for entry in city_entries:
+                parts = entry.split("|")
+                if len(parts) == 4:
+                    try:
+                        locations.append({
+                            "name": parts[0].strip(),
+                            "lat": float(parts[1].strip()),
+                            "lng": float(parts[2].strip()),
+                            "radius": int(parts[3].strip())
+                        })
+                    except ValueError:
+                        continue
+            return locations
         
-        for code in codes:
-            if code:
-                # Remove any non-digit characters
-                clean_code = ''.join(filter(str.isdigit, code))
-                if clean_code:
-                    locations.append({"code": clean_code})
-        
-        return locations
+        return []
     
     def _build_filters(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Build filters object from individual input fields."""
         filters = {}
         
         # Immobilier filters
+        if input_data.get("filter_real_estate_type"):
+            filters["real_estate_type"] = input_data["filter_real_estate_type"]
+        
         if input_data.get("filter_square_min") or input_data.get("filter_square_max"):
             square = []
             if input_data.get("filter_square_min"):
@@ -150,12 +184,34 @@ class Config:
             if len(rooms) == 2:
                 filters["rooms"] = rooms
         
+        if input_data.get("filter_bedrooms_min") or input_data.get("filter_bedrooms_max"):
+            bedrooms = []
+            if input_data.get("filter_bedrooms_min"):
+                bedrooms.append(input_data["filter_bedrooms_min"])
+            if input_data.get("filter_bedrooms_max"):
+                if not bedrooms:
+                    bedrooms.append(1)
+                bedrooms.append(input_data["filter_bedrooms_max"])
+            if len(bedrooms) == 2:
+                filters["bedrooms"] = bedrooms
+        
         if input_data.get("filter_energy_rate"):
             filters["energy_rate"] = input_data["filter_energy_rate"]
         
+        if input_data.get("filter_furnished"):
+            filters["furnished"] = input_data["filter_furnished"]
+        
         # Véhicules filters
-        if input_data.get("filter_mileage_max"):
-            filters["mileage"] = [0, input_data["filter_mileage_max"]]
+        if input_data.get("filter_mileage_min") or input_data.get("filter_mileage_max"):
+            mileage = []
+            if input_data.get("filter_mileage_min"):
+                mileage.append(input_data["filter_mileage_min"])
+            if input_data.get("filter_mileage_max"):
+                if not mileage:
+                    mileage.append(0)
+                mileage.append(input_data["filter_mileage_max"])
+            if len(mileage) == 2:
+                filters["mileage"] = mileage
         
         if input_data.get("filter_regdate_min") or input_data.get("filter_regdate_max"):
             regdate = []
@@ -173,6 +229,12 @@ class Config:
         
         if input_data.get("filter_gearbox"):
             filters["gearbox"] = input_data["filter_gearbox"]
+        
+        if input_data.get("filter_doors"):
+            filters["doors"] = input_data["filter_doors"]
+        
+        if input_data.get("filter_seats"):
+            filters["seats"] = input_data["filter_seats"]
         
         return filters
         
@@ -605,9 +667,11 @@ class ScraperEngine:
             params["locations"] = [location]
         
         # Add owner type
-        owner_type = EnumMapper.get_owner_type(self.config.owner_type)
-        if owner_type:
-            params["owner_type"] = owner_type
+        owner_type_str = self.config.owner_type
+        if owner_type_str and owner_type_str != "all":
+            owner_type = EnumMapper.get_owner_type(owner_type_str)
+            if owner_type:
+                params["owner_type"] = owner_type
         
         # Add price range
         if self.config.price_min is not None or self.config.price_max is not None:
