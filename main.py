@@ -647,16 +647,32 @@ class ScraperEngine:
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
-        # Validate URL: only support /recherche URLs, not category pages
+        # Validate and clean URL
         try:
-            from urllib.parse import urlparse
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
             parsed = urlparse(self.config.direct_url)
+            
             if not parsed.scheme.startswith("http"):
                 raise ValueError("URL invalide: doit commencer par http/https")
             if not parsed.netloc.endswith("leboncoin.fr"):
                 raise ValueError("URL invalide: domaine non supporté (leboncoin.fr attendu)")
             if "/recherche" not in parsed.path:
                 raise ValueError("URL non supportée: utilisez une URL de recherche (contenant /recherche)")
+            
+            # Clean URL: remove tracking parameters
+            query_params = parse_qs(parsed.query)
+            # Remove tracking params that may cause issues
+            tracking_params = ['kst', 'from', 'utm_source', 'utm_medium', 'utm_campaign']
+            for param in tracking_params:
+                query_params.pop(param, None)
+            
+            # Rebuild clean URL
+            clean_query = urlencode(query_params, doseq=True)
+            clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', clean_query, ''))
+            
+            self.logger.info(f"Cleaned URL: {clean_url}")
+            self.config.direct_url = clean_url
+            
         except Exception as e:
             self.logger.error(f"Direct URL validation error: {e}")
             self.stats["errors"] += 1
@@ -669,24 +685,26 @@ class ScraperEngine:
                 # Scrape using URL
                 result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page)
                 
-                # Debug: log result type and structure
-                self.logger.info(f"Result type: {type(result)}")
+                # Check if we have ads (like in search_leboncoin.py line 360)
+                if not result.ads:
+                    self.logger.info(f"No more ads on page {page}")
+                    break
                 
-                # Get ads iterator - don't convert to list as it's a generator
-                if hasattr(result, 'ads') and result.ads is not None:
-                    ads_iter = result.ads
-                    self.logger.info("Using result.ads iterator")
-                else:
-                    ads_iter = result
-                    self.logger.info("Using result as iterator")
+                # Log page info (like in search_leboncoin.py line 358)
+                if page == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
+                    self.logger.info(f"Total pages: {result.max_pages}, Total results: {result.total}")
+                
+                # Log ads count (like in search_leboncoin.py line 364)
+                try:
+                    self.logger.info(f"Processing {len(result.ads)} ads...")
+                except TypeError:
+                    self.logger.info(f"Processing ads (iterating)...")
                 
                 page_ads = 0
                 old_ads_count = 0
-                ads_found = False
                 
-                # Iterate directly on the generator
-                for ad in ads_iter:
-                    ads_found = True
+                # Iterate directly (like in search_leboncoin.py line 366)
+                for ad in result.ads:
                     try:
                         # Validate ad
                         if not hasattr(ad, 'id') or not ad.id:
@@ -733,11 +751,6 @@ class ScraperEngine:
                         self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
                         self.stats["errors"] += 1
                         continue
-                
-                if not ads_found:
-                    self.logger.warning("No ads found in iterator - URL search may not be working correctly")
-                    self.logger.info("This might indicate the lbc library doesn't support URL-based search properly")
-                    break
                 
                 self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
                 self.stats["pages_processed"] += 1
