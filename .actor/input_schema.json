@@ -20,11 +20,7 @@
       "type": "string",
       "description": "Collez une URL de recherche Leboncoin (format accepté: https://www.leboncoin.fr/recherche?...). Les URLs de pages catégories (ex: /cl/...) ne sont pas supportées.",
       "editor": "textfield",
-      "prefill": "https://www.leboncoin.fr/recherche?category=2&text=iphone&locations=Paris_75000",
-      "examples": [
-        "https://www.leboncoin.fr/recherche?category=2&locations=Paris_75000",
-        "https://www.leboncoin.fr/recherche?text=peugeot+308&price=0-15000"
-      ]
+      "prefill": "https://www.leboncoin.fr/recherche?category=2&text=iphone&locations=Paris_75000"
     },
     "category": {
       "title": "Catégorie",
