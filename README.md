@@ -1,56 +1,166 @@
 # Leboncoin Scraper
 
-Un scraper universel pour extraire des données structurées depuis Leboncoin.fr. Supporte toutes les catégories du site avec filtrage avancé et exports multiples.
+Extrayez des données structurées depuis Leboncoin.fr avec support de toutes les catégories, filtrage avancé et exports JSON/CSV.
 
-## Vue d'ensemble
+## Ce que fait cet outil
 
-Cet outil permet d'extraire des données publiques depuis Leboncoin de manière automatisée. Il gère la pagination, la déduplication, et offre des options de filtrage par localisation, catégorie, prix et autres attributs spécifiques.
+Ce scraper collecte automatiquement les annonces depuis Leboncoin selon vos critères de recherche. Il gère la pagination, élimine les doublons et exporte les données dans un format exploitable.
 
-Conçu pour fonctionner sur la plateforme Apify, il peut également être exécuté localement avec une interface Streamlit pour tests et prototypage.
+**Catégories supportées :**
+- Immobilier (ventes, locations, colocations)
+- Véhicules (voitures, motos, utilitaires, vélos)
+- Emploi (offres, formations)
+- Électronique (ordinateurs, téléphones, consoles)
+- Maison & Jardin
+- Mode & Vêtements
+- Loisirs & Sports
+- Services
+- Et toutes les autres catégories
 
-## Fonctionnalités
+## Configuration
 
-### Extraction de données
+### Paramètres obligatoires
 
-- Support de toutes les catégories Leboncoin (Immobilier, Véhicules, Emploi, Électronique, etc.)
-- Pagination automatique avec gestion des limites
-- Déduplication des annonces
-- Export en format JSON ou CSV
+| Champ | Description | Valeurs possibles |
+|-------|-------------|-------------------|
+| **Category** | Catégorie à scraper | `IMMOBILIER_VENTES_IMMOBILIERES`, `VEHICULES_VOITURES`, `EMPLOI_OFFRES_DEMPLOI`, etc. |
 
-### Filtrage
+### Paramètres de localisation
 
-**Par localisation :**
-- Ville (avec rayon de recherche en mètres)
-- Département(s)
-- Région(s)
-- France entière
+| Champ | Description | Exemple |
+|-------|-------------|---------|
+| **Location type** | Type de zone géographique | `city`, `department`, `region`, `none` |
+| **Locations** | Liste des localisations | `[{"code": "75"}]` pour département, `[{"name": "Paris", "lat": 48.8566, "lng": 2.3522, "radius": 10000}]` pour ville |
 
-**Par critères généraux :**
-- Catégorie spécifique
-- Fourchette de prix
-- Type d'annonce (offre/demande)
-- Type de vendeur (particulier/professionnel)
-- Recherche textuelle (dans titre ou titre+description)
-- Tri (plus récent, pertinence, prix croissant/décroissant)
+### Filtres
 
-**Par critères spécifiques :**
-- Immobilier : surface, terrain, nombre de pièces, DPE, type de bien
-- Véhicules : kilométrage, année, carburant, marque/modèle
-- Emploi : type de contrat, salaire, expérience
-- Autres catégories : attributs variables selon la catégorie
+| Champ | Description | Exemple |
+|-------|-------------|---------|
+| **Search text** | Mots-clés de recherche | `"appartement"`, `"iphone 13"` |
+| **Price min/max** | Fourchette de prix en € | Min: `100000`, Max: `500000` |
+| **Sort** | Ordre de tri | `NEWEST`, `RELEVANCE`, `PRICE_ASC`, `PRICE_DESC` |
+| **Ad type** | Type d'annonce | `OFFER` (offre), `DEMAND` (demande) |
+| **Owner type** | Type de vendeur | `PRIVATE`, `PRO`, ou vide pour tous |
+| **Filters** | Filtres spécifiques par catégorie | Voir exemples ci-dessous |
 
 ### Options avancées
 
-- Filtrage temporel : collecte uniquement les annonces récentes (dernières X heures/jours)
-- Arrêt automatique après X annonces anciennes consécutives
-- Support proxy pour éviter les limitations
-- Délais configurables entre requêtes
+| Champ | Description | Défaut |
+|-------|-------------|--------|
+| **Max pages** | Nombre maximum de pages (0 = illimité) | `10` |
+| **Max age days** | Âge maximum des annonces en jours (0 = tous) | `0` |
+| **Output format** | Format de sortie | `detailed` (complet) ou `compact` (essentiel) |
+| **Delay between pages** | Délai entre pages en secondes | `1` |
+
+## Exemples de configuration
+
+### Exemple 1 : Recherche simple
+
+Chercher des voitures en Île-de-France :
+
+```json
+{
+  "category": "VEHICULES_VOITURES",
+  "location_type": "region",
+  "locations": [{"name": "ILE_DE_FRANCE"}],
+  "price_min": 5000,
+  "price_max": 20000,
+  "max_pages": 5
+}
+```
+
+### Exemple 2 : Recherche avec filtres avancés
+
+Appartements à Paris avec critères spécifiques :
+
+```json
+{
+  "category": "IMMOBILIER_VENTES_IMMOBILIERES",
+  "location_type": "department",
+  "locations": [{"code": "75"}],
+  "price_min": 300000,
+  "price_max": 600000,
+  "filters": {
+    "real_estate_type": ["2"],
+    "square": [50, 100],
+    "rooms": [2, 4]
+  },
+  "max_pages": 10
+}
+```
+
+### Exemple 3 : Recherche par mots-clés
+
+Offres d'emploi avec mots-clés :
+
+```json
+{
+  "category": "EMPLOI_OFFRES_DEMPLOI",
+  "search_text": "développeur",
+  "search_in_title_only": true,
+  "location_type": "none",
+  "max_pages": 3
+}
+```
+
+### Exemple 4 : Recherche géolocalisée
+
+Dans une ville avec rayon de recherche :
+
+```json
+{
+  "category": "TOUTES_CATEGORIES",
+  "location_type": "city",
+  "locations": [{
+    "name": "Lyon",
+    "lat": 45.764043,
+    "lng": 4.835659,
+    "radius": 15000
+  }],
+  "max_pages": 5
+}
+```
+
+## Filtres par catégorie
+
+### Immobilier
+
+```json
+{
+  "real_estate_type": ["1"],     // 1=maison, 2=appartement, 3=terrain
+  "square": [100, 200],           // Surface habitable (m²)
+  "land_plot_surface": [300, 1000], // Surface terrain (m²)
+  "rooms": [3, 5],                // Nombre de pièces
+  "bedrooms": [2, 3],             // Nombre de chambres
+  "energy_rate": ["a", "b", "c"]  // DPE
+}
+```
+
+### Véhicules
+
+```json
+{
+  "mileage": [0, 100000],         // Kilométrage
+  "regdate": [2018, 2023],        // Année
+  "fuel": ["1", "2"],             // 1=essence, 2=diesel, 4=électrique
+  "gearbox": ["1", "2"]           // 1=manuelle, 2=automatique
+}
+```
+
+### Électronique
+
+```json
+{
+  "storage_capacity": ["128", "256"], // Stockage (Go)
+  "ram": ["8", "16"]                  // RAM (Go)
+}
+```
 
 ## Données extraites
 
 ### Format détaillé
 
-Chaque annonce extraite contient :
+Chaque annonce contient :
 
 ```json
 {
@@ -61,244 +171,123 @@ Chaque annonce extraite contient :
   "price": 450000,
   "first_publication_date": "2025-10-20 14:30:00",
   "index_date": "2025-10-22 09:15:00",
-  "scraped_at": "2025-10-22 10:00:00",
   "city": "Paris",
   "zipcode": "75001",
-  "department_id": "75",
   "department_name": "Paris",
-  "region_id": "12",
   "region_name": "Île-de-France",
   "latitude": 48.8566,
   "longitude": 2.3522,
   "attributes": {
     "square": "120",
-    "rooms": "4",
-    "energy_rate": "c"
+    "rooms": "4"
   },
-  "images": ["url1", "url2"],
-  "image_count": 2
+  "images": ["url1", "url2", "..."],
+  "image_count": 6
 }
 ```
 
 ### Format compact
 
-Version allégée avec informations essentielles :
-- ID, URL, titre
-- Prix
-- Ville, code postal
-- Date de mise à jour
+Version allégée avec informations essentielles (ID, URL, titre, prix, ville, date).
 
-## Configuration
+## Catégories disponibles
 
-### Paramètres d'entrée
-
-| Paramètre | Type | Description | Requis |
-|-----------|------|-------------|--------|
-| `category` | String | Catégorie Leboncoin (ex: `IMMOBILIER_VENTES_IMMOBILIERES`) | Oui |
-| `location_type` | String | Type de localisation : `city`, `department`, `region`, `none` | Non |
-| `locations` | Array | Liste de localisations (format dépend du type) | Non |
-| `search_text` | String | Mots-clés de recherche | Non |
-| `price_min` | Integer | Prix minimum en euros | Non |
-| `price_max` | Integer | Prix maximum en euros | Non |
-| `max_pages` | Integer | Nombre maximum de pages à scraper (0 = illimité) | Non |
-| `max_age_days` | Float | Âge maximum des annonces en jours (0 = désactivé) | Non |
-| `output_format` | String | Format de sortie : `detailed` ou `compact` | Non |
-| `filters` | Object | Filtres spécifiques par catégorie (JSON) | Non |
-
-### Exemple de configuration
+Liste des principales catégories (utilisez exactement ces valeurs) :
 
 **Immobilier :**
-```json
-{
-  "category": "IMMOBILIER_VENTES_IMMOBILIERES",
-  "location_type": "department",
-  "locations": [{"code": "75"}],
-  "filters": {
-    "real_estate_type": ["1"],
-    "square": [100, 200],
-    "rooms": [3, 5],
-    "energy_rate": ["a", "b", "c"]
-  },
-  "price_min": 300000,
-  "price_max": 800000,
-  "max_pages": 10
-}
-```
+- `IMMOBILIER_VENTES_IMMOBILIERES`
+- `IMMOBILIER_LOCATIONS`
+- `IMMOBILIER_COLOCATIONS`
+- `IMMOBILIER_BUREAUX_ET_COMMERCES`
 
 **Véhicules :**
-```json
-{
-  "category": "VEHICULES_VOITURES",
-  "location_type": "region",
-  "locations": [{"name": "ILE_DE_FRANCE"}],
-  "filters": {
-    "fuel": ["4"],
-    "mileage": [0, 50000]
-  },
-  "price_min": 15000,
-  "price_max": 35000
-}
-```
+- `VEHICULES_VOITURES`
+- `VEHICULES_MOTOS`
+- `VEHICULES_UTILITAIRES`
+- `VEHICULES_CARAVANING`
+- `VEHICULES_VELOS`
 
-## Performance
+**Emploi :**
+- `EMPLOI_OFFRES_DEMPLOI`
+- `EMPLOI_FORMATIONS_PROFESSIONNELLES`
+
+**Électronique :**
+- `ELECTRONIQUE_ORDINATEURS`
+- `ELECTRONIQUE_TELEPHONES_ET_OBJETS_CONNECTES`
+- `ELECTRONIQUE_CONSOLES`
+
+**Autres :**
+- `MAISON_ET_JARDIN_AMEUBLEMENT`
+- `MODE_VETEMENTS`
+- `LOISIRS_SPORTS_ET_HOBBIES`
+- `TOUTES_CATEGORIES`
+
+Liste complète : voir l'onglet "Input" de l'Actor.
+
+## Performance et limites
 
 ### Vitesse
 
-- Environ 100-200 annonces par minute (dépend des délais configurés)
-- Pagination automatique sans intervention
+- **Environ 100-200 annonces par minute** selon les délais configurés
+- Plus le délai entre pages est grand, plus c'est lent mais stable
 
-### Limites
+### Limites techniques
 
-- Leboncoin limite généralement les résultats à ~100 pages par recherche
-- Utilisation de proxy recommandée pour éviter les erreurs 403 (Datadome)
-- Les délais entre requêtes impactent la vitesse mais améliorent la stabilité
+**Pagination :** Leboncoin limite généralement à ~100 pages par recherche. Pour extraire plus de données, affinez vos filtres (par département, prix, etc.).
 
-### Consommation (Apify)
+**Blocages :** Pour de gros volumes ou une utilisation intensive, un proxy français est recommandé. Vous pouvez configurer un proxy dans les paramètres avancés de l'Actor.
 
-Estimation approximative :
-- 1 000 annonces : ~0.01-0.02 compute units
-- Dépend du format de sortie choisi et des délais configurés
+**Données :** Seules les données publiquement visibles sont collectées. Les numéros de téléphone masqués ou les messages privés ne sont pas accessibles.
 
-## Catégories supportées
+## Consommation et tarification
 
-Toutes les catégories Leboncoin sont supportées. Exemples :
+**Consommation estimée :**
+- ~0.01-0.02 compute units pour 1 000 annonces
+- Dépend du format de sortie et des délais configurés
 
-- `TOUTES_CATEGORIES`
-- `IMMOBILIER_VENTES_IMMOBILIERES`
-- `IMMOBILIER_LOCATIONS`
-- `VEHICULES_VOITURES`
-- `VEHICULES_MOTOS`
-- `EMPLOI_OFFRES_DEMPLOI`
-- `ELECTRONIQUE_ORDINATEURS`
-- `ELECTRONIQUE_TELEPHONES_ET_OBJETS_CONNECTES`
-- `MAISON_ET_JARDIN_AMEUBLEMENT`
+**Coût indicatif :**
+- 1 000 annonces : ~0.10-0.20€
+- 10 000 annonces : ~1-2€
 
-Liste complète dans `CATEGORIES_REFERENCE.md`.
+Les compute units non utilisées de votre plan Apify sont disponibles.
 
-## Limitations et points d'attention
+## Cas d'usage
 
-### Limitations techniques
+**Analyse de marché :** Suivez les prix et tendances dans votre secteur
 
-- **Blocages possibles** : Leboncoin utilise Datadome pour détecter les bots. L'utilisation d'un proxy propre (résidentiel français de préférence) est recommandée pour des volumes importants.
-- **Pagination limitée** : Le site limite généralement l'accès aux 100 premières pages de résultats. Pour des recherches exhaustives, affinez les filtres.
-- **Pas d'historique** : Le scraper collecte l'état actuel, pas l'historique des modifications d'annonces.
+**Veille concurrentielle :** Surveillez les offres de vos concurrents
 
-### Utilisation responsable
+**Études immobilières :** Analysez les prix par zone et performance énergétique
 
-- Respectez les délais entre requêtes (1-2 secondes minimum recommandé)
-- Ne collectez que les données dont vous avez réellement besoin
-- Les données collectées sont publiques mais leur utilisation doit respecter le RGPD
-- Cet outil n'est pas affilié à Leboncoin
+**Lead generation :** Constituez des bases de données qualifiées
 
-### Cas non supportés
+**Monitoring de prix :** Suivez l'évolution des prix d'un produit
 
-- Extraction de numéros de téléphone masqués (nécessite connexion)
-- Accès aux messages entre vendeurs et acheteurs
-- Création ou modification d'annonces
+## Support
 
-## Installation locale
+Pour toute question ou problème :
+1. Consultez l'onglet "Input" pour la liste complète des paramètres
+2. Vérifiez les exemples de configuration ci-dessus
+3. Contactez le support via l'onglet "Issues"
 
-Pour tester en local (non requis pour Apify) :
+## Points d'attention
 
-```bash
-# Installation
-pip install -r requirements.txt
+⚠️ **Utilisation responsable :** Cet outil collecte des données publiques. Respectez les conditions d'utilisation de Leboncoin et le RGPD dans votre traitement des données.
 
-# Interface Streamlit
-streamlit run ui.py
+⚠️ **Pas d'affiliation :** Cet outil n'est pas affilié à Leboncoin.
 
-# Ligne de commande
-# Créer apify_input.json avec votre configuration
-python main.py
-```
-
-## Tests
-
-```bash
-python test_scraper.py
-```
-
-Suite de tests incluse pour valider :
-- Configuration
-- Enums et mapping
-- Construction de localisations
-- Traitement des données
-- Initialisation du client
-- (Optionnel) Test de scraping réel
-
-## Documentation
-
-- `README.md` - Ce fichier
-- `QUICKSTART.md` - Guide de démarrage rapide
-- `USAGE.md` - Documentation détaillée d'utilisation
-- `CATEGORIES_REFERENCE.md` - Liste complète des catégories et filtres
-- `FILES_OVERVIEW.md` - Structure du projet
-
-## Architecture
-
-```
-leboncoin_actor/
-├── main.py                  # Script principal (Apify compatible)
-├── ui.py                    # Interface Streamlit
-├── requirements.txt         # Dépendances Python
-├── Dockerfile              # Container Apify
-├── .actor/
-│   ├── actor.json          # Configuration Apify
-│   └── input_schema.json   # Schéma d'interface
-└── config_examples.json    # Configurations d'exemple
-```
-
-### Composants principaux
-
-- **ApifyAdapter** : Gère l'intégration avec Apify (fallback local si non disponible)
-- **Config** : Charge et valide la configuration
-- **LocationBuilder** : Construit les objets de localisation
-- **DataProcessor** : Traite et normalise les données
-- **AdTransformer** : Transforme les annonces en format structuré
-- **ScraperEngine** : Moteur principal de scraping
-
-## Dépendances
-
-- `lbc` (>=1.0.10) - Bibliothèque Python pour l'API Leboncoin
-- `apify` (>=2.0.0) - SDK Apify (optionnel)
-- `streamlit` (>=1.28.0) - Interface UI (optionnel)
-- `pandas` (>=2.0.0) - Export CSV (optionnel)
-
-Voir `requirements.txt` pour la liste complète.
+⚠️ **Blocages possibles :** En cas d'utilisation intensive sans proxy, des blocages temporaires peuvent survenir. Dans ce cas, réduisez la fréquence ou ajoutez un proxy.
 
 ## Changelog
 
-### Version 1.0.0 (2025-10-22)
-
+**v1.0.0 (Oct 2025)**
 - Support de toutes les catégories Leboncoin
 - Filtrage par ville, département, région
 - Filtres personnalisés par catégorie
 - Export JSON et CSV
-- Interface Streamlit pour tests
 - Déduplication automatique
-- Gestion des erreurs et reprises
-- Support proxy
-- Documentation complète
-
-## Licence
-
-MIT License - Voir fichier `LICENSE`
-
-## Support
-
-Pour signaler un bug ou demander une fonctionnalité, ouvrez une issue sur le dépôt.
-
-Documentation complète disponible dans les fichiers `.md` du projet.
-
-## Avertissement
-
-Cet outil collecte des données publiquement accessibles depuis Leboncoin.fr. Les utilisateurs sont responsables :
-- Du respect des conditions d'utilisation de Leboncoin
-- De la conformité avec le RGPD dans le traitement des données
-- De l'usage légal et éthique des données collectées
-
-Cet outil n'est pas affilié à, approuvé par, ou associé de quelque manière que ce soit avec Leboncoin ou ses services.
+- Gestion des erreurs
 
 ---
 
-*Projet basé sur la bibliothèque [lbc](https://github.com/etienne-hd/lbc) d'Etienne Hodé*
+**Prêt à commencer ?** Configurez vos paramètres dans l'onglet "Input" et lancez l'extraction !
