@@ -67,6 +67,10 @@ class Config:
     
     def __init__(self, input_data: Dict[str, Any]):
         """Initialize configuration from input data."""
+        # Scraping mode
+        self.scrape_mode = input_data.get("scrape_mode", "search")
+        self.direct_url = input_data.get("direct_url", "").strip()
+        
         # Search parameters
         self.search_text = input_data.get("search_text", "")
         self.category = input_data.get("category", "TOUTES_CATEGORIES")
@@ -837,6 +841,93 @@ class ScraperEngine:
         self.logger.info(f"Completed location {location_name}: {len(all_ads)} ads extracted")
         return all_ads
     
+    async def scrape_from_url(self) -> List[Dict[str, Any]]:
+        """Scrape from a direct Leboncoin URL."""
+        all_ads = []
+        page = 1
+        
+        max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
+        
+        while page <= max_pages:
+            self.logger.info(f"Scraping page {page} from URL")
+            
+            try:
+                # Scrape using URL
+                search_result = self.client.search(url=self.config.direct_url, limit=35, page=page)
+                
+                page_ads = 0
+                old_ads_count = 0
+                
+                for ad in search_result:
+                    try:
+                        # Validate ad
+                        if not hasattr(ad, 'id') or not ad.id:
+                            continue
+                        
+                        ad_id = ad.id
+                        
+                        # Skip duplicates
+                        if ad_id in self.seen_ids:
+                            continue
+                        
+                        # Check age filter
+                        if self.config.max_age_days > 0:
+                            if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
+                                ad_age_days = (datetime.now() - ad.first_publication_date).days
+                                if ad_age_days > self.config.max_age_days:
+                                    old_ads_count += 1
+                                    if old_ads_count >= self.config.consecutive_old_limit:
+                                        self.logger.info(f"Age cutoff reached")
+                                        return all_ads
+                                    continue
+                                else:
+                                    old_ads_count = 0
+                        
+                        # Transform ad
+                        ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
+                        
+                        # Add ad
+                        self.seen_ids.add(ad_id)
+                        all_ads.append(ad_data)
+                        page_ads += 1
+                        self.stats["total_ads"] += 1
+                        self.stats["unique_ads"] += 1
+                        
+                        # Push to Apify dataset
+                        await ApifyAdapter.push_data(ad_data)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error processing ad: {e}")
+                        self.stats["errors"] += 1
+                        continue
+                
+                self.logger.info(f"Extracted {page_ads} ads from page {page}")
+                self.stats["pages_processed"] += 1
+                
+                # Stop if no more ads
+                if page_ads == 0:
+                    self.logger.info("No more ads found")
+                    break
+                
+                # Check pagination limits
+                if page >= max_pages:
+                    self.logger.info(f"Max pages limit reached ({max_pages})")
+                    break
+                
+                page += 1
+                time.sleep(self.config.delay_between_pages)
+                
+            except StopIteration:
+                self.logger.info("Reached end of results")
+                break
+            except Exception as e:
+                self.logger.error(f"Error on page {page}: {e}")
+                self.stats["errors"] += 1
+                break
+        
+        self.logger.info(f"Completed URL scraping: {len(all_ads)} ads extracted")
+        return all_ads
+    
     async def run(self) -> Dict[str, Any]:
         """Execute complete scraping pipeline."""
         self.logger.info("Starting Leboncoin scraper")
@@ -848,36 +939,44 @@ class ScraperEngine:
         # Initialize client
         await self.initialize_client()
         
-        # Build locations
-        locations_list = LocationBuilder.build_locations_list(
-            self.config.locations,
-            self.config.location_type
-        )
-        
-        if not locations_list:
-            self.logger.warning("No valid locations provided, searching globally")
-            locations_list = [None]
-        
-        self.logger.info(f"Processing {len(locations_list)} location(s)")
-        
-        # Scrape each location
+        # Check scraping mode
         all_ads = []
-        for idx, location in enumerate(locations_list, 1):
-            location_name = self._get_location_name(location, idx)
+        if self.config.scrape_mode == "url" and self.config.direct_url:
+            self.logger.info(f"Mode: Direct URL scraping")
+            self.logger.info(f"URL: {self.config.direct_url}")
+            all_ads = await self.scrape_from_url()
+        else:
+            self.logger.info(f"Mode: Search by criteria")
             
-            try:
-                ads = await self.scrape_location(location, location_name)
-                all_ads.extend(ads)
-                self.stats["locations_processed"] += 1
+            # Build locations
+            locations_list = LocationBuilder.build_locations_list(
+                self.config.locations,
+                self.config.location_type
+            )
+            
+            if not locations_list:
+                self.logger.warning("No valid locations provided, searching globally")
+                locations_list = [None]
+            
+            self.logger.info(f"Processing {len(locations_list)} location(s)")
+            
+            # Scrape each location
+            for idx, location in enumerate(locations_list, 1):
+                location_name = self._get_location_name(location, idx)
                 
-                # Delay between locations
-                if idx < len(locations_list):
-                    time.sleep(self.config.delay_between_locations)
+                try:
+                    ads = await self.scrape_location(location, location_name)
+                    all_ads.extend(ads)
+                    self.stats["locations_processed"] += 1
                     
-            except Exception as e:
-                self.logger.error(f"Failed to scrape location {location_name}: {e}")
-                self.stats["errors"] += 1
-                continue
+                    # Delay between locations
+                    if idx < len(locations_list):
+                        time.sleep(self.config.delay_between_locations)
+                    
+                except Exception as e:
+                    self.logger.error(f"Failed to scrape location {location_name}: {e}")
+                    self.stats["errors"] += 1
+                    continue
         
         # Final summary
         self.logger.info("Scraping completed successfully")
