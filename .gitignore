@@ -43,7 +43,7 @@ apify_storage/
 storage/
 .crawlee/
 
-# Streamlit
+# Streamlit UI
 ui.py
 
 # Output files
