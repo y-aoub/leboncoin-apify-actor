@@ -160,7 +160,7 @@ Dans une ville avec rayon de recherche :
 
 ### Format détaillé
 
-Chaque annonce contient **tous** les champs disponibles :
+**Structure aplatie (un seul niveau de profondeur)** :
 
 ```json
 {
@@ -174,51 +174,38 @@ Chaque annonce contient **tous** les champs disponibles :
   "category_name": "Ventes immobilières",
   
   "price": 450000,
-  "price_formatted": "450000€",
   
   "ad_type": "offer",
   "status": "active",
-  "brand": null,
   
   "first_publication_date": "2025-10-20 14:30:00",
   "index_date": "2025-10-22 09:15:00",
-  "expiration_date": "2025-11-20 14:30:00",
   "scraped_at": "2025-10-22 12:00:00",
   
   "has_phone": true,
-  "favorites": 15,
   
   "city": "Paris",
   "zipcode": "75001",
   "department_id": "75",
   "department_name": "Paris",
-  "region_id": "12",
   "region_name": "Île-de-France",
   "latitude": 48.8566,
   "longitude": 2.3522,
   
-  "attributes": {
-    "square": "120",
-    "rooms": "4",
-    "energy_rate": "B"
-  },
-  
   "images": ["url1", "url2", "url3"],
   "image_count": 3,
   
-  "user": {
-    "id": "abc123",
-    "name": "Jean Dupont",
-    "account_type": "particular",
-    "is_pro": false,
-    "location": "Paris",
-    "profile_picture": "https://...",
-    "registered_at": "2020-01-15 10:00:00",
-    "description": "Particulier vendeur",
-    "store_id": null,
-    "total_ads": 3,
-    "badges": []
-  },
+  "user_id": "abc123",
+  "user_name": "Jean Dupont",
+  "user_is_pro": false,
+  "user_registered_at": "2020-01-15 10:00:00",
+  "user_total_ads": 3,
+  
+  "attribute_square": "120",
+  "attribute_rooms": "4",
+  "attribute_energy_rate": "B",
+  "attribute_condition": "good",
+  "attribute_shippable": "true",
   
   "search_category": "IMMOBILIER_VENTES_IMMOBILIERES",
   "search_location": "Paris"
@@ -227,49 +214,59 @@ Chaque annonce contient **tous** les champs disponibles :
 
 ### Champs extraits
 
+**Structure aplatie : tous les champs au même niveau**
+
 **Informations de base :**
 - `id`, `url`, `title`, `subject`, `body`
 - `category_id`, `category_name`
-- `price`, `price_formatted`
-- `ad_type`, `status`, `brand`
+- `price`
+- `ad_type`, `status`
 
 **Dates :**
 - `first_publication_date` : Date de première publication
 - `index_date` : Date d'indexation
-- `expiration_date` : Date d'expiration
 - `scraped_at` : Date d'extraction
 
-**Contact et engagement :**
+**Contact :**
 - `has_phone` : Numéro de téléphone disponible
-- `favorites` : Nombre de favoris
 
 **Localisation :**
 - `city`, `zipcode`
 - `department_id`, `department_name`
-- `region_id`, `region_name`
+- `region_name`
 - `latitude`, `longitude`
-
-**Attributs spécifiques à la catégorie :**
-- `attributes` : Object contenant tous les champs propres à chaque catégorie
-  - Immobilier : `square`, `rooms`, `energy_rate`, etc.
-  - Véhicules : `mileage`, `regdate`, `fuel`, `gearbox`, etc.
-  - Électronique : `storage_capacity`, `ram`, etc.
 
 **Médias :**
 - `images` : Liste des URLs des images
 - `image_count` : Nombre d'images
 
-**Vendeur :**
-- `user` : Object complet avec toutes les infos du vendeur
-  - `id`, `name`, `account_type`
-  - `is_pro` : Professionnel ou particulier
-  - `location`, `profile_picture`
-  - `registered_at`, `total_ads`
-  - `badges` : Badges du vendeur
+**Vendeur (préfixe `user_`) :**
+- `user_id` : ID du vendeur
+- `user_name` : Nom du vendeur
+- `user_is_pro` : Professionnel ou particulier
+- `user_registered_at` : Date d'inscription
+- `user_total_ads` : Nombre total d'annonces
+
+**Attributs spécifiques (préfixe `attribute_`) :**
+- `attribute_square` : Surface (immobilier)
+- `attribute_rooms` : Nombre de pièces (immobilier)
+- `attribute_energy_rate` : DPE (immobilier)
+- `attribute_mileage` : Kilométrage (véhicules)
+- `attribute_regdate` : Année (véhicules)
+- `attribute_fuel` : Carburant (véhicules)
+- `attribute_condition` : État du produit
+- `attribute_shippable` : Livraison disponible
+- `attribute_shipping_type` : Type de livraison
+- Et tous les autres attributs spécifiques à chaque catégorie...
 
 **Contexte de recherche :**
 - `search_category` : Catégorie recherchée
 - `search_location` : Localisation recherchée
+
+> **Note :** 
+> - Structure complètement aplatie : **aucun dictionnaire imbriqué**
+> - Les champs techniques internes sont automatiquement filtrés
+> - Format idéal pour CSV, bases de données relationnelles et analyses
 
 ### Format compact
 

@@ -340,26 +340,18 @@ class AdTransformer:
             ad.attributes if hasattr(ad, 'attributes') else []
         )
         
-        # Extract user data
-        user_data = None
-        if user:
-            user_data = {
-                "id": user.id if hasattr(user, 'id') else None,
-                "name": user.name if hasattr(user, 'name') else None,
-                "account_type": user.account_type if hasattr(user, 'account_type') else None,
-                "is_pro": user.is_pro if hasattr(user, 'is_pro') else None,
-                "location": user.location if hasattr(user, 'location') else None,
-                "profile_picture": user.profile_picture if hasattr(user, 'profile_picture') else None,
-                "registered_at": DataProcessor.normalize_datetime(
-                    user.registered_at if hasattr(user, 'registered_at') else None
-                ),
-                "description": user.description if hasattr(user, 'description') else None,
-                "store_id": user.store_id if hasattr(user, 'store_id') else None,
-                "total_ads": user.total_ads if hasattr(user, 'total_ads') else None,
-                "badges": user.badges if hasattr(user, 'badges') else [],
-            }
+        # Filter attributes to remove technical/internal fields
+        filtered_attributes = {
+            k: v for k, v in attributes.items()
+            if k not in [
+                'rating_score', 'rating_count', 'profile_picture_url',
+                'estimated_parcel_weight', 'estimated_parcel_size',
+                'is_bundleable', 'purchase_cta_visible', 'negotiation_cta_visible',
+                'country_isocode3166', 'is_import', 'payment_methods'
+            ]
+        }
         
-        # Base data
+        # Base data (flattened - single level depth)
         ad_data = {
             # IDs and basic info
             "id": ad.id if hasattr(ad, 'id') else None,
@@ -374,12 +366,10 @@ class AdTransformer:
             
             # Price
             "price": ad.price if hasattr(ad, 'price') else None,
-            "price_formatted": f"{ad.price}€" if hasattr(ad, 'price') and ad.price else None,
             
             # Status and type
             "ad_type": ad.ad_type if hasattr(ad, 'ad_type') else None,
             "status": ad.status if hasattr(ad, 'status') else None,
-            "brand": ad.brand if hasattr(ad, 'brand') else None,
             
             # Dates
             "first_publication_date": DataProcessor.normalize_datetime(
@@ -388,41 +378,41 @@ class AdTransformer:
             "index_date": DataProcessor.normalize_datetime(
                 ad.index_date if hasattr(ad, 'index_date') else None
             ),
-            "expiration_date": DataProcessor.normalize_datetime(
-                ad.expiration_date if hasattr(ad, 'expiration_date') else None
-            ),
             "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             
             # Contact info
             "has_phone": ad.has_phone if hasattr(ad, 'has_phone') else None,
-            
-            # Engagement
-            "favorites": ad.favorites if hasattr(ad, 'favorites') else None,
             
             # Location
             "city": location.city if location else None,
             "zipcode": location.zipcode if location else None,
             "department_id": location.department_id if location else None,
             "department_name": location.department_name if location else None,
-            "region_id": location.region_id if location else None,
             "region_name": location.region_name if location else None,
             "latitude": location.lat if location else None,
             "longitude": location.lng if location else None,
             
-            # Attributes (category-specific fields)
-            "attributes": attributes,
-            
-            # Images
+            # Images (as comma-separated string or keep as list)
             "images": ad.images if hasattr(ad, 'images') and ad.images else [],
             "image_count": len(ad.images) if hasattr(ad, 'images') and ad.images else 0,
             
-            # User/Seller info
-            "user": user_data,
+            # User/Seller info (flattened with user_ prefix)
+            "user_id": user.id if user and hasattr(user, 'id') else None,
+            "user_name": user.name if user and hasattr(user, 'name') else None,
+            "user_is_pro": user.is_pro if user and hasattr(user, 'is_pro') else None,
+            "user_registered_at": DataProcessor.normalize_datetime(
+                user.registered_at if user and hasattr(user, 'registered_at') else None
+            ),
+            "user_total_ads": user.total_ads if user and hasattr(user, 'total_ads') else None,
             
             # Search context
             "search_category": search_context.get("category"),
             "search_location": search_context.get("location"),
         }
+        
+        # Add flattened attributes with attribute_ prefix
+        for key, value in filtered_attributes.items():
+            ad_data[f"attribute_{key}"] = value
         
         return ad_data
     
