@@ -235,10 +235,38 @@ Liste complète : voir l'onglet "Input" de l'Actor.
 
 **Pagination :** Leboncoin limite généralement à ~100 pages par recherche. Pour extraire plus de données, affinez vos filtres (par département, prix, etc.).
 
-**Blocages :** Pour de gros volumes ou une utilisation intensive, un proxy français est recommandé. Vous pouvez configurer un proxy dans les paramètres avancés de l'Actor.
+**Blocages :** Pour de gros volumes ou une utilisation intensive, un proxy français est fortement recommandé (voir section Proxy ci-dessous).
 
 **Données :** Seules les données publiquement visibles sont collectées. Les numéros de téléphone masqués ou les messages privés ne sont pas accessibles.
 
+## Configuration proxy
+
+Pour éviter les blocages lors d'un scraping intensif, utilisez des proxies :
+
+### Apify Proxy (Recommandé)
+
+L'Actor supporte nativement **Apify Proxy**. Dans l'interface :
+
+1. Allez dans la section **"Proxy configuration"**
+2. Activez **"Use Apify Proxy"**
+3. Sélectionnez **"Residential"** (recommandé pour Leboncoin)
+4. Pays : **France (FR)** pour de meilleurs résultats
+
+**Préconfiguration par défaut :** Proxies résidentiels français activés.
+
+### Proxies personnalisés
+
+Vous pouvez aussi utiliser vos propres proxies :
+- Sélectionnez "Custom proxies"
+- Entrez vos URLs de proxy
+
+### Pourquoi utiliser des proxies ?
+
+- **Évite les blocages Datadome** sur Leboncoin
+- **Augmente le taux de réussite** pour les gros volumes
+- **Proxies résidentiels français** = meilleurs résultats (IP françaises)
+
+**Note :** L'utilisation de proxies Apify consomme des crédits supplémentaires selon votre plan.
 
 ## Cas d'usage
 

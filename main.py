@@ -96,11 +96,8 @@ class Config:
         self.max_age_days = input_data.get("max_age_days", 0)  # 0 = disabled
         self.consecutive_old_limit = input_data.get("consecutive_old_limit", 5)
         
-        # Proxy settings
-        self.proxy_host = input_data.get("proxy_host")
-        self.proxy_port = input_data.get("proxy_port")
-        self.proxy_username = input_data.get("proxy_username")
-        self.proxy_password = input_data.get("proxy_password")
+        # Proxy settings (Apify ProxyConfiguration)
+        self.proxy_configuration = input_data.get("proxyConfiguration")
         
         # Output settings
         self.output_format = input_data.get("output_format", "detailed")  # detailed, compact
@@ -413,17 +410,36 @@ class ScraperEngine:
             "errors": 0
         }
     
-    def initialize_client(self) -> None:
-        """Initialize Leboncoin client with optional proxy."""
-        if self.config.proxy_host and self.config.proxy_port:
+    async def initialize_client(self) -> None:
+        """Initialize Leboncoin client with optional Apify proxy."""
+        proxy_url = None
+        
+        # Try to use Apify ProxyConfiguration
+        if self.config.proxy_configuration:
+            try:
+                from apify import Actor
+                proxy_config = await Actor.create_proxy_configuration(
+                    actor_proxy_input=self.config.proxy_configuration
+                )
+                if proxy_config:
+                    proxy_url = await proxy_config.new_url()
+                    self.logger.info(f"✓ Using Apify proxy: {proxy_url[:50]}...")
+            except Exception as e:
+                self.logger.warning(f"⚠ Failed to initialize Apify proxy: {e}")
+        
+        # Initialize client with or without proxy
+        if proxy_url:
+            # Parse proxy URL to extract components for lbc.Proxy
+            from urllib.parse import urlparse
+            parsed = urlparse(proxy_url)
             proxy = lbc.Proxy(
-                host=self.config.proxy_host,
-                port=self.config.proxy_port,
-                username=self.config.proxy_username,
-                password=self.config.proxy_password
+                host=parsed.hostname,
+                port=parsed.port or 8000,
+                username=parsed.username,
+                password=parsed.password
             )
             self.client = lbc.Client(proxy=proxy)
-            self.logger.info(f"✓ Proxy configured: {self.config.proxy_host}:{self.config.proxy_port}")
+            self.logger.info("✓ Client initialized with proxy")
         else:
             self.client = lbc.Client()
             self.logger.info("✓ Client initialized without proxy")
@@ -633,7 +649,7 @@ class ScraperEngine:
         self.logger.info("═" * 70)
         
         # Initialize client
-        self.initialize_client()
+        await self.initialize_client()
         
         # Build locations
         locations_list = LocationBuilder.build_locations_list(

@@ -178,30 +178,16 @@
       "enum": ["detailed", "compact"],
       "enumTitles": ["Detailed (all fields)", "Compact (essential fields only)"]
     },
-    "proxy_host": {
-      "title": "Proxy Host",
-      "type": "string",
-      "description": "Proxy server hostname",
-      "editor": "textfield"
-    },
-    "proxy_port": {
-      "title": "Proxy Port",
-      "type": "integer",
-      "description": "Proxy server port",
-      "editor": "number"
-    },
-    "proxy_username": {
-      "title": "Proxy Username",
-      "type": "string",
-      "description": "Proxy authentication username",
-      "editor": "textfield"
-    },
-    "proxy_password": {
-      "title": "Proxy Password",
-      "type": "string",
-      "description": "Proxy authentication password",
-      "editor": "textfield",
-      "isSecret": true
+    "proxyConfiguration": {
+      "title": "Proxy configuration",
+      "type": "object",
+      "description": "Select proxies to use. Use Apify Proxy (Residential recommended for best results) or custom proxy servers.",
+      "editor": "proxy",
+      "prefill": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"],
+        "apifyProxyCountry": "FR"
+      }
     },
     "verbose": {
       "title": "Verbose Logging",
