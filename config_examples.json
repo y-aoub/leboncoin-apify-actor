@@ -1,0 +1,121 @@
+{
+  "immobilier_paris": {
+    "description": "Recherche d'appartements à Paris",
+    "config": {
+      "search_text": "appartement",
+      "category": "IMMOBILIER_VENTES_IMMOBILIERES",
+      "sort": "NEWEST",
+      "ad_type": "OFFER",
+      "location_type": "department",
+      "locations": [{"code": "75"}],
+      "filters": {
+        "real_estate_type": ["2"],
+        "square": [50, 100],
+        "rooms": [2, 4]
+      },
+      "price_min": 300000,
+      "price_max": 600000,
+      "max_pages": 5,
+      "max_age_days": 3
+    }
+  },
+  
+  "voitures_ile_de_france": {
+    "description": "Voitures en Île-de-France",
+    "config": {
+      "search_text": "",
+      "category": "VEHICULES_VOITURES",
+      "sort": "PRICE_ASC",
+      "ad_type": "OFFER",
+      "location_type": "region",
+      "locations": [{"name": "ILE_DE_FRANCE"}],
+      "filters": {
+        "mileage": [0, 100000],
+        "fuel": ["1", "2"]
+      },
+      "price_min": 5000,
+      "price_max": 20000,
+      "max_pages": 10,
+      "output_format": "compact"
+    }
+  },
+  
+  "emploi_informatique": {
+    "description": "Offres d'emploi en informatique",
+    "config": {
+      "search_text": "développeur python",
+      "category": "EMPLOI_OFFRES_DEMPLOI",
+      "sort": "NEWEST",
+      "ad_type": "OFFER",
+      "search_in_title_only": true,
+      "location_type": "none",
+      "locations": [],
+      "filters": {
+        "job_type": ["1", "2"]
+      },
+      "max_pages": 3,
+      "max_age_days": 2
+    }
+  },
+  
+  "electronique_france": {
+    "description": "Électronique sur toute la France",
+    "config": {
+      "search_text": "macbook",
+      "category": "ELECTRONIQUE_ORDINATEURS",
+      "sort": "PRICE_ASC",
+      "ad_type": "OFFER",
+      "owner_type": "PRIVATE",
+      "location_type": "none",
+      "locations": [],
+      "price_min": 500,
+      "price_max": 1500,
+      "max_pages": 5,
+      "output_format": "compact"
+    }
+  },
+  
+  "immobilier_complet": {
+    "description": "Scraping complet immobilier avec DPE",
+    "config": {
+      "search_text": "",
+      "category": "IMMOBILIER_VENTES_IMMOBILIERES",
+      "sort": "NEWEST",
+      "ad_type": "OFFER",
+      "location_type": "department",
+      "locations": [
+        {"code": "75"},
+        {"code": "92"},
+        {"code": "93"},
+        {"code": "94"}
+      ],
+      "filters": {
+        "real_estate_type": ["1"],
+        "land_plot_surface": [300, 10000],
+        "energy_rate": ["a", "b", "c", "d", "e"]
+      },
+      "price_min": 0,
+      "max_pages": 0,
+      "delay_between_pages": 1,
+      "delay_between_locations": 3,
+      "max_age_days": 7,
+      "output_format": "detailed"
+    }
+  },
+  
+  "tous_categories_region": {
+    "description": "Toutes catégories dans une région",
+    "config": {
+      "search_text": "",
+      "category": "TOUTES_CATEGORIES",
+      "sort": "NEWEST",
+      "ad_type": "OFFER",
+      "location_type": "region",
+      "locations": [{"name": "BRETAGNE"}],
+      "price_max": 100,
+      "max_pages": 2,
+      "output_format": "compact"
+    }
+  }
+}
+

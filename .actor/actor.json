@@ -1,0 +1,61 @@
+{
+  "actorSpecification": 1,
+  "name": "leboncoin-universal-scraper",
+  "title": "Leboncoin Universal Scraper",
+  "description": "Advanced scraper for Leboncoin.fr - All categories, locations, and filters supported",
+  "version": "1.0.0",
+  "meta": {
+    "templateId": "python-start"
+  },
+  "input": "./.actor/input_schema.json",
+  "dockerfile": "./Dockerfile",
+  "readme": "./USAGE.md",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Leboncoin Ads Dataset",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": [
+              "id",
+              "url",
+              "subject",
+              "price",
+              "city",
+              "zipcode",
+              "index_date"
+            ]
+          },
+          "display": {
+            "component": "table",
+            "properties": {
+              "id": {
+                "label": "ID",
+                "format": "text"
+              },
+              "subject": {
+                "label": "Title",
+                "format": "text"
+              },
+              "price": {
+                "label": "Price (€)",
+                "format": "number"
+              },
+              "city": {
+                "label": "City",
+                "format": "text"
+              },
+              "url": {
+                "label": "URL",
+                "format": "link"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

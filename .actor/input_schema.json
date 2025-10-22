@@ -1,0 +1,216 @@
+{
+  "title": "Leboncoin Universal Scraper Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "search_text": {
+      "title": "Search Text",
+      "type": "string",
+      "description": "Keywords to search for",
+      "editor": "textfield",
+      "example": "maison"
+    },
+    "category": {
+      "title": "Category",
+      "type": "string",
+      "description": "Leboncoin category",
+      "editor": "select",
+      "default": "TOUTES_CATEGORIES",
+      "enum": [
+        "TOUTES_CATEGORIES",
+        "IMMOBILIER_VENTES_IMMOBILIERES",
+        "IMMOBILIER_LOCATIONS",
+        "IMMOBILIER_COLOCATIONS",
+        "VEHICULES_VOITURES",
+        "VEHICULES_MOTOS",
+        "VEHICULES_CARAVANING",
+        "EMPLOI_OFFRES_DEMPLOI",
+        "ELECTRONIQUE_ORDINATEURS",
+        "ELECTRONIQUE_TELEPHONES_ET_OBJETS_CONNECTES",
+        "MAISON_ET_JARDIN_AMEUBLEMENT"
+      ],
+      "enumTitles": [
+        "All Categories",
+        "Real Estate - Sales",
+        "Real Estate - Rentals",
+        "Real Estate - Roommates",
+        "Vehicles - Cars",
+        "Vehicles - Motorcycles",
+        "Vehicles - Camping",
+        "Jobs - Job Offers",
+        "Electronics - Computers",
+        "Electronics - Phones",
+        "Home & Garden - Furniture"
+      ]
+    },
+    "sort": {
+      "title": "Sort By",
+      "type": "string",
+      "description": "Sort order for results",
+      "editor": "select",
+      "default": "NEWEST",
+      "enum": ["NEWEST", "RELEVANCE", "PRICE_ASC", "PRICE_DESC"],
+      "enumTitles": ["Newest First", "Most Relevant", "Price: Low to High", "Price: High to Low"]
+    },
+    "ad_type": {
+      "title": "Ad Type",
+      "type": "string",
+      "description": "Type of ad",
+      "editor": "select",
+      "default": "OFFER",
+      "enum": ["OFFER", "DEMAND"],
+      "enumTitles": ["Offers", "Demands"]
+    },
+    "owner_type": {
+      "title": "Owner Type",
+      "type": "string",
+      "description": "Type of seller",
+      "editor": "select",
+      "enum": ["PRIVATE", "PRO"],
+      "enumTitles": ["Private Seller", "Professional"]
+    },
+    "location_type": {
+      "title": "Location Type",
+      "type": "string",
+      "description": "Type of location filter",
+      "editor": "select",
+      "default": "department",
+      "enum": ["none", "city", "department", "region"],
+      "enumTitles": ["None (All France)", "City", "Department", "Region"]
+    },
+    "locations": {
+      "title": "Locations",
+      "type": "array",
+      "description": "List of locations to search in",
+      "editor": "json",
+      "prefill": [
+        {"code": "75"}
+      ]
+    },
+    "filters": {
+      "title": "Custom Filters",
+      "type": "object",
+      "description": "Category-specific filters (JSON object)",
+      "editor": "json",
+      "example": {
+        "square": [100, 200],
+        "rooms": [3, 5]
+      }
+    },
+    "price_min": {
+      "title": "Minimum Price (€)",
+      "type": "integer",
+      "description": "Minimum price in euros",
+      "editor": "number",
+      "minimum": 0
+    },
+    "price_max": {
+      "title": "Maximum Price (€)",
+      "type": "integer",
+      "description": "Maximum price in euros",
+      "editor": "number",
+      "minimum": 0
+    },
+    "max_pages": {
+      "title": "Max Pages",
+      "type": "integer",
+      "description": "Maximum number of pages to scrape (0 = unlimited)",
+      "editor": "number",
+      "default": 10,
+      "minimum": 0
+    },
+    "limit_per_page": {
+      "title": "Results Per Page",
+      "type": "integer",
+      "description": "Number of results per page",
+      "editor": "number",
+      "default": 35,
+      "minimum": 1,
+      "maximum": 35
+    },
+    "delay_between_pages": {
+      "title": "Delay Between Pages (seconds)",
+      "type": "number",
+      "description": "Delay in seconds between page requests",
+      "editor": "number",
+      "default": 1,
+      "minimum": 0.5,
+      "maximum": 10
+    },
+    "delay_between_locations": {
+      "title": "Delay Between Locations (seconds)",
+      "type": "number",
+      "description": "Delay in seconds between different locations",
+      "editor": "number",
+      "default": 2,
+      "minimum": 0.5,
+      "maximum": 20
+    },
+    "max_age_days": {
+      "title": "Max Age (days)",
+      "type": "number",
+      "description": "Maximum age of ads in days (0 = disabled)",
+      "editor": "number",
+      "default": 0,
+      "minimum": 0
+    },
+    "consecutive_old_limit": {
+      "title": "Consecutive Old Ads Limit",
+      "type": "integer",
+      "description": "Stop after finding this many consecutive old ads",
+      "editor": "number",
+      "default": 5,
+      "minimum": 1
+    },
+    "search_in_title_only": {
+      "title": "Search in Title Only",
+      "type": "boolean",
+      "description": "Only search in ad titles",
+      "editor": "checkbox",
+      "default": false
+    },
+    "output_format": {
+      "title": "Output Format",
+      "type": "string",
+      "description": "Format of the output data",
+      "editor": "select",
+      "default": "detailed",
+      "enum": ["detailed", "compact"],
+      "enumTitles": ["Detailed (all fields)", "Compact (essential fields only)"]
+    },
+    "proxy_host": {
+      "title": "Proxy Host",
+      "type": "string",
+      "description": "Proxy server hostname",
+      "editor": "textfield"
+    },
+    "proxy_port": {
+      "title": "Proxy Port",
+      "type": "integer",
+      "description": "Proxy server port",
+      "editor": "number"
+    },
+    "proxy_username": {
+      "title": "Proxy Username",
+      "type": "string",
+      "description": "Proxy authentication username",
+      "editor": "textfield"
+    },
+    "proxy_password": {
+      "title": "Proxy Password",
+      "type": "string",
+      "description": "Proxy authentication password",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "verbose": {
+      "title": "Verbose Logging",
+      "type": "boolean",
+      "description": "Enable detailed logging",
+      "editor": "checkbox",
+      "default": true
+    }
+  },
+  "required": ["category"]
+}
+

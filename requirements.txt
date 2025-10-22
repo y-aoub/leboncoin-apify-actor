@@ -1,0 +1,14 @@
+# Core dependencies
+lbc>=1.0.10
+curl-cffi==0.11.3
+
+# Apify SDK
+apify>=2.0.0
+
+# Streamlit UI
+streamlit>=1.28.0
+pandas>=2.0.0
+
+# Data handling
+python-dateutil>=2.8.0
+
