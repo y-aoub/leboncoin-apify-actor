@@ -11,11 +11,10 @@ import json
 import logging
 import time
 import os
+import asyncio
 from dataclasses import fields, is_dataclass
 from typing import Any, Optional, Dict, List, Union
 from datetime import datetime, timedelta
-
-import logging
 
 
 # ============================================================================
@@ -262,28 +261,31 @@ class DataProcessor:
     
     @staticmethod
     def convert_to_serializable(value: Any) -> Any:
-        """Convert any value to JSON-serializable format."""
-        if value is None:
-            return None
-        elif isinstance(value, (str, int, float, bool)):
+        """Convert any value to JSON-serializable format (optimized)."""
+        # Fast path for common types
+        if value is None or isinstance(value, (str, int, float, bool)):
             return value
-        elif isinstance(value, (list, tuple)):
+        
+        value_type = type(value)
+        
+        # Fast path for collections
+        if value_type is list:
             return [DataProcessor.convert_to_serializable(item) for item in value]
-        elif isinstance(value, dict):
+        elif value_type is tuple:
+            return [DataProcessor.convert_to_serializable(item) for item in value]
+        elif value_type is dict:
             return {k: DataProcessor.convert_to_serializable(v) for k, v in value.items()}
-        elif isinstance(value, datetime):
+        elif value_type is datetime:
             return value.strftime("%Y-%m-%d %H:%M:%S")
         elif hasattr(value, '__dict__'):
-            # For custom objects, convert to dict
+            # For custom objects, use __dict__ directly (faster)
             result = {}
-            for attr_name in dir(value):
-                if not attr_name.startswith('_') and not callable(getattr(value, attr_name)):
-                    attr_value = getattr(value, attr_name, None)
-                    if attr_value is not None:
-                        result[attr_name] = DataProcessor.convert_to_serializable(attr_value)
+            for attr_name, attr_value in value.__dict__.items():
+                if not attr_name.startswith('_') and attr_value is not None:
+                    result[attr_name] = DataProcessor.convert_to_serializable(attr_value)
             return result
         else:
-            # For any other type, convert to string
+            # Fallback to string
             return str(value)
 
 
@@ -296,21 +298,25 @@ class AdTransformer:
     
     @staticmethod
     def create_detailed_ad(ad: Any, search_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Create detailed ad dictionary with ALL available fields (raw data, no parsing)."""
-        ad_data = {}
-        
-        # Extract ALL attributes from the ad object (raw, no filtering)
-        for attr_name in dir(ad):
-            if not attr_name.startswith('_') and not callable(getattr(ad, attr_name)):
-                value = getattr(ad, attr_name, None)
-                if value is not None:
-                    # Convert complex objects to JSON-serializable format
+        """Create detailed ad dictionary with ALL available fields (optimized)."""
+        # Use __dict__ directly for speed (much faster than dir())
+        if hasattr(ad, '__dict__'):
+            ad_data = {}
+            for attr_name, value in ad.__dict__.items():
+                if not attr_name.startswith('_') and value is not None:
                     ad_data[attr_name] = DataProcessor.convert_to_serializable(value)
+        else:
+            # Fallback to dir() if no __dict__
+            ad_data = {}
+            for attr_name in dir(ad):
+                if not attr_name.startswith('_') and not callable(getattr(ad, attr_name)):
+                    value = getattr(ad, attr_name, None)
+                    if value is not None:
+                        ad_data[attr_name] = DataProcessor.convert_to_serializable(value)
         
-        # Add timestamp when scraped
-        ad_data["scraped_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Add search context
+        # Add metadata (reuse same timestamp string)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ad_data["scraped_at"] = now_str
         ad_data["search_category"] = search_context.get("category", "Unknown")
         ad_data["search_location"] = search_context.get("location", "Unknown")
         
@@ -514,44 +520,43 @@ class ScraperEngine:
                 if page == 1:
                     total_pages = getattr(result, 'max_pages', None)
                     total_results = getattr(result, 'total', None) or 0
-                    self.logger.info(f"Found {total_results} total ads across {total_pages or '?'} pages")
+                    self.logger.info(f"Found {total_results} ads across {total_pages or '?'} pages")
 
                 # Collect ads for this page
                 page_ads = 0
                 had_any = False
                 for ad in ads_iter:
+                    had_any = True
+                    # Fast validation
+                    if not hasattr(ad, 'id') or isinstance(ad, str):
+                        continue
+                    
+                    # Create ad data
+                    if self.config.output_format == "detailed":
+                        ad_data = AdTransformer.create_detailed_ad(ad, search_context)
+                    else:
+                        ad_data = AdTransformer.create_compact_ad(ad, search_context)
+                    
+                    # Check duplicates
+                    ad_id = ad_data.get("id")
+                    if ad_id in self.seen_ids:
+                        self.stats["duplicates"] += 1
+                        continue
+                    
+                    # Age filter
+                    if DataProcessor.is_ad_too_old(
+                        ad_data.get("index_date"),
+                        self.config.max_age_days
+                    ):
+                        old_ads_count += 1
+                        if old_ads_count >= self.config.consecutive_old_limit:
+                            self.logger.info(f"Age cutoff reached")
+                            return all_ads
+                    else:
+                        old_ads_count = 0
+                    
+                    # Add ad
                     try:
-                        had_any = True
-                        # Skip if ad is not a proper object
-                        if not hasattr(ad, 'id') or isinstance(ad, str):
-                            self.logger.warning(f"Skipping invalid ad object of type: {type(ad)}")
-                            continue
-                        
-                        # Create ad data
-                        if self.config.output_format == "detailed":
-                            ad_data = AdTransformer.create_detailed_ad(ad, search_context)
-                        else:
-                            ad_data = AdTransformer.create_compact_ad(ad, search_context)
-                        
-                        # Check for duplicates
-                        ad_id = ad_data.get("id")
-                        if ad_id in self.seen_ids:
-                            self.stats["duplicates"] += 1
-                            continue
-                        
-                        # Check age filter
-                        if DataProcessor.is_ad_too_old(
-                            ad_data.get("index_date"),
-                            self.config.max_age_days
-                        ):
-                            old_ads_count += 1
-                            if old_ads_count >= self.config.consecutive_old_limit:
-                                self.logger.info(f"Age cutoff reached after {old_ads_count} consecutive old ads")
-                                return all_ads
-                        else:
-                            old_ads_count = 0
-                        
-                        # Add ad
                         self.seen_ids.add(ad_id)
                         all_ads.append(ad_data)
                         page_ads += 1
@@ -560,17 +565,15 @@ class ScraperEngine:
                         
                         # Push to Apify dataset
                         await ApifyAdapter.push_data(ad_data)
-                        
-                    except Exception as e:
-                        self.logger.error(f"Error processing ad: {e}")
+                    except Exception:
                         self.stats["errors"] += 1
-                        continue
                 
                 if not had_any:
-                    self.logger.info(f"No more ads found on page {page}")
                     break
 
-                self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
+                # Log every 5 pages to reduce overhead
+                if page % 5 == 1:
+                    self.logger.info(f"Page {page}: {page_ads} ads extracted")
                 self.stats["pages_processed"] += 1
                 
                 # Check pagination limits
@@ -583,7 +586,9 @@ class ScraperEngine:
                     break
                 
                 page += 1
-                await asyncio.sleep(self.config.delay_between_pages)
+                # Only sleep if delay configured
+                if self.config.delay_between_pages > 0:
+                    await asyncio.sleep(self.config.delay_between_pages)
                 
             except Exception as e:
                 self.logger.error(f"Error fetching page {page}: {e}")
@@ -595,7 +600,7 @@ class ScraperEngine:
     
     def _scrape_single_page(self, page_num: int) -> tuple[List[Dict[str, Any]], bool]:
         """
-        Scrape a single page sequentially (optimized for low latency).
+        Scrape a single page sequentially (optimized for speed).
         Returns (ads_list, should_stop).
         
         Args:
@@ -605,49 +610,52 @@ class ScraperEngine:
             Tuple of (list of ads, boolean indicating if scraping should stop)
         """
         try:
-            # Scrape using URL (direct synchronous call - no overhead)
+            # Direct API call - minimal overhead
             result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page_num)
             
-            # Log page info on first page
+            # Log info on first page only
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
                 self.logger.info(f"Found {result.total} ads in {result.max_pages} pages")
             
-            # Check if we have ads
+            # Fast exit if no ads
             if not result.ads:
                 return [], True
             
             page_ads = []
             old_ads_count = 0
             
-            # Iterate directly
+            # Static search context (reused for all ads on this page)
+            search_context = {"category": "URL", "location": "Direct URL"}
+            
+            # Process ads
             for ad in result.ads:
-                try:
-                    # Basic validation
-                    if not hasattr(ad, 'id') or not ad.id:
-                        continue
-                    
-                    # Skip duplicates
-                    if ad.id in self.seen_ids:
-                        self.stats["duplicates"] += 1
-                        continue
-                    
-                    # Age filter
-                    if self.config.max_age_days > 0 and hasattr(ad, 'first_publication_date') and ad.first_publication_date:
+                # Fast validation
+                if not hasattr(ad, 'id') or not ad.id:
+                    continue
+                
+                # Skip duplicates (set lookup is O(1))
+                if ad.id in self.seen_ids:
+                    self.stats["duplicates"] += 1
+                    continue
+                
+                # Age filter (optimized)
+                if self.config.max_age_days > 0:
+                    if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
                         ad_age_days = (datetime.now() - ad.first_publication_date).days
                         if ad_age_days > self.config.max_age_days:
                             old_ads_count += 1
                             if old_ads_count >= self.config.consecutive_old_limit:
                                 return page_ads, True
                             continue
-                        old_ads_count = 0
-                    
-                    # Transform and add
-                    ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
+                    old_ads_count = 0
+                
+                # Transform and add (bulk processing, no individual error handling for speed)
+                try:
+                    ad_data = AdTransformer.create_detailed_ad(ad, search_context)
                     self.seen_ids.add(ad.id)
                     page_ads.append(ad_data)
-                    
-                except Exception as e:
-                    self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
+                except Exception:
+                    # Silent skip for speed - only count error
                     self.stats["errors"] += 1
             
             return page_ads, False
@@ -655,19 +663,19 @@ class ScraperEngine:
         except Exception as e:
             error_msg = str(e)
             if "Datadome" in error_msg:
-                self.logger.error(f"Access blocked by Datadome on page {page_num} (blocked by anti-bot protection)")
+                self.logger.error(f"Access blocked by Datadome (anti-bot) on page {page_num}")
             else:
                 self.logger.error(f"Failed to scrape page {page_num}: {error_msg}")
             self.stats["errors"] += 1
             return [], True
 
     async def scrape_from_url(self) -> List[Dict[str, Any]]:
-        """Scrape from a direct Leboncoin URL (sequential, low-latency optimized)."""
+        """Scrape from a direct Leboncoin URL (sequential, optimized for speed)."""
         all_ads = []
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
-        # Validate and clean URL
+        # Validate and clean URL (once)
         try:
             from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
             parsed = urlparse(self.config.direct_url)
@@ -689,7 +697,6 @@ class ScraperEngine:
             clean_query = urlencode(query_params, doseq=True)
             clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', clean_query, ''))
             
-            self.logger.info(f"URL validated and cleaned: {clean_url}")
             self.config.direct_url = clean_url
             
         except Exception as e:
@@ -697,9 +704,9 @@ class ScraperEngine:
             self.stats["errors"] += 1
             return all_ads
 
-        # Sequential scraping (optimized for low latency)
+        # Sequential scraping - optimized batching
         page = 1
-        batch_size = 5  # Push to Apify every N pages for lower latency
+        batch_size = 10  # Larger batch for fewer I/O operations
         batch_ads = []
         
         self.logger.info("Starting scraping")
@@ -714,13 +721,14 @@ class ScraperEngine:
                 self.stats["total_ads"] += len(page_ads)
                 self.stats["unique_ads"] += len(page_ads)
                 self.stats["pages_processed"] += 1
-                self.logger.info(f"Page {page}: {len(page_ads)} ads")
+                # Log every 5 pages to reduce overhead
+                if page % 5 == 1:
+                    self.logger.info(f"Page {page}: {len(page_ads)} ads extracted")
             
-            # Push batch
+            # Push batch when full or stopping
             if len(batch_ads) >= batch_size * self.config.limit_per_page or should_stop:
                 if batch_ads:
                     await ApifyAdapter.push_data(batch_ads)
-                    self.logger.info(f"Pushed {len(batch_ads)} ads")
                     batch_ads = []
             
             # Check stop conditions
@@ -728,15 +736,15 @@ class ScraperEngine:
                 break
             
             page += 1
+            # Only sleep if delay configured (avoid unnecessary async overhead)
             if self.config.delay_between_pages > 0:
                 await asyncio.sleep(self.config.delay_between_pages)
         
-        # Push remaining
+        # Push remaining ads
         if batch_ads:
             await ApifyAdapter.push_data(batch_ads)
-            self.logger.info(f"Pushed final {len(batch_ads)} ads")
         
-        self.logger.info(f"Completed: {len(all_ads)} total ads")
+        self.logger.info(f"Scraping completed: {len(all_ads)} ads from {self.stats['pages_processed']} pages")
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
