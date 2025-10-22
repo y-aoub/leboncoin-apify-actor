@@ -15,6 +15,8 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Optional, Dict, List, Union
 from datetime import datetime, timedelta
 
+import colorlog
+
 
 # ============================================================================
 # APIFY INTEGRATION
@@ -101,28 +103,35 @@ class Config:
 # ============================================================================
 
 class Logger:
-    """Advanced logging with Apify integration."""
+    """Professional logging with colors and Apify integration."""
     
     @staticmethod
     def setup(verbose: bool = True) -> logging.Logger:
-        """Configure logger for Apify environment."""
-        try:
-            from apify import Actor
-            logger = logging.getLogger("LeboncoinScraper")
-            logger.setLevel(logging.INFO if verbose else logging.WARNING)
-            if not logger.handlers:
-                handler = logging.StreamHandler()
-                handler.setFormatter(logging.Formatter('%(message)s'))
-                logger.addHandler(handler)
-            return logger
-        except ImportError:
-            logger = logging.getLogger("LeboncoinScraper")
+        """Configure professional logging with colors."""
+        logger = colorlog.getLogger("LeboncoinScraper")
         logger.setLevel(logging.INFO if verbose else logging.WARNING)
         logger.handlers.clear()
-        handler = logging.StreamHandler()
-        handler.setLevel(logging.INFO if verbose else logging.WARNING)
-        formatter = logging.Formatter('[%(levelname)s] %(message)s')
+        
+        # Create a color formatter
+        formatter = colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s [%(levelname)-8s] %(message)s%(reset)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            reset=True,
+            log_colors={
+                'DEBUG':    'cyan',
+                'INFO':     'green',
+                'WARNING': 'yellow',
+                'ERROR':   'red',
+                'CRITICAL': 'red,bg_white',
+            }
+        )
+        
+        # Create a stream handler
+        handler = colorlog.StreamHandler()
         handler.setFormatter(formatter)
+        handler.setLevel(logging.INFO if verbose else logging.WARNING)
+        
+        # Add the handler to the logger
         logger.addHandler(handler)
         
         return logger

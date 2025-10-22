@@ -8,3 +8,6 @@ apify>=2.0.0
 # Data handling
 python-dateutil>=2.8.0
 
+# Logging
+colorlog>=6.8.0
+
