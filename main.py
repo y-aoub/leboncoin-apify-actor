@@ -600,8 +600,16 @@ class ScraperEngine:
             Tuple of (list of ads, boolean indicating if scraping should stop)
         """
         try:
+            # Build URL with page parameter embedded to preserve all filters
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            parsed = urlparse(self.config.direct_url)
+            query_params = parse_qs(parsed.query)
+            query_params['page'] = [str(page_num)]
+            clean_query = urlencode(query_params, doseq=True)
+            page_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', clean_query, ''))
+            
             # Direct API call - minimal overhead
-            result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page_num)
+            result = self.client.search(url=page_url, limit=self.config.limit_per_page)
             
             # Log info on first page only
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
