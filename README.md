@@ -239,17 +239,6 @@ Liste complète : voir l'onglet "Input" de l'Actor.
 
 **Données :** Seules les données publiquement visibles sont collectées. Les numéros de téléphone masqués ou les messages privés ne sont pas accessibles.
 
-## Consommation et tarification
-
-**Consommation estimée :**
-- ~0.01-0.02 compute units pour 1 000 annonces
-- Dépend du format de sortie et des délais configurés
-
-**Coût indicatif :**
-- 1 000 annonces : ~0.10-0.20€
-- 10 000 annonces : ~1-2€
-
-Les compute units non utilisées de votre plan Apify sont disponibles.
 
 ## Cas d'usage
 
