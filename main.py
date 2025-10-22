@@ -113,7 +113,7 @@ class Logger:
         
         # Create simple formatter without timestamp
         formatter = logging.Formatter(
-            "[apify] %(levelname)-7s %(message)s"
+            "[apify] %(levelname)-6s %(message)s"
         )
         
         # Create a stream handler
