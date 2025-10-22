@@ -160,31 +160,116 @@ Dans une ville avec rayon de recherche :
 
 ### Format détaillé
 
-Chaque annonce contient :
+Chaque annonce contient **tous** les champs disponibles :
 
 ```json
 {
   "id": "2456789123",
   "url": "https://www.leboncoin.fr/...",
+  "title": "Titre de l'annonce",
   "subject": "Titre de l'annonce",
   "body": "Description complète",
+  
+  "category_id": "9",
+  "category_name": "Ventes immobilières",
+  
   "price": 450000,
+  "price_formatted": "450000€",
+  
+  "ad_type": "offer",
+  "status": "active",
+  "brand": null,
+  
   "first_publication_date": "2025-10-20 14:30:00",
   "index_date": "2025-10-22 09:15:00",
+  "expiration_date": "2025-11-20 14:30:00",
+  "scraped_at": "2025-10-22 12:00:00",
+  
+  "has_phone": true,
+  "favorites": 15,
+  
   "city": "Paris",
   "zipcode": "75001",
+  "department_id": "75",
   "department_name": "Paris",
+  "region_id": "12",
   "region_name": "Île-de-France",
   "latitude": 48.8566,
   "longitude": 2.3522,
+  
   "attributes": {
     "square": "120",
-    "rooms": "4"
+    "rooms": "4",
+    "energy_rate": "B"
   },
-  "images": ["url1", "url2", "..."],
-  "image_count": 6
+  
+  "images": ["url1", "url2", "url3"],
+  "image_count": 3,
+  
+  "user": {
+    "id": "abc123",
+    "name": "Jean Dupont",
+    "account_type": "particular",
+    "is_pro": false,
+    "location": "Paris",
+    "profile_picture": "https://...",
+    "registered_at": "2020-01-15 10:00:00",
+    "description": "Particulier vendeur",
+    "store_id": null,
+    "total_ads": 3,
+    "badges": []
+  },
+  
+  "search_category": "IMMOBILIER_VENTES_IMMOBILIERES",
+  "search_location": "Paris"
 }
 ```
+
+### Champs extraits
+
+**Informations de base :**
+- `id`, `url`, `title`, `subject`, `body`
+- `category_id`, `category_name`
+- `price`, `price_formatted`
+- `ad_type`, `status`, `brand`
+
+**Dates :**
+- `first_publication_date` : Date de première publication
+- `index_date` : Date d'indexation
+- `expiration_date` : Date d'expiration
+- `scraped_at` : Date d'extraction
+
+**Contact et engagement :**
+- `has_phone` : Numéro de téléphone disponible
+- `favorites` : Nombre de favoris
+
+**Localisation :**
+- `city`, `zipcode`
+- `department_id`, `department_name`
+- `region_id`, `region_name`
+- `latitude`, `longitude`
+
+**Attributs spécifiques à la catégorie :**
+- `attributes` : Object contenant tous les champs propres à chaque catégorie
+  - Immobilier : `square`, `rooms`, `energy_rate`, etc.
+  - Véhicules : `mileage`, `regdate`, `fuel`, `gearbox`, etc.
+  - Électronique : `storage_capacity`, `ram`, etc.
+
+**Médias :**
+- `images` : Liste des URLs des images
+- `image_count` : Nombre d'images
+
+**Vendeur :**
+- `user` : Object complet avec toutes les infos du vendeur
+  - `id`, `name`, `account_type`
+  - `is_pro` : Professionnel ou particulier
+  - `location`, `profile_picture`
+  - `registered_at`, `total_ads`
+  - `badges` : Badges du vendeur
+
+**Contexte de recherche :**
+- `search_category` : Catégorie recherchée
+- `search_location` : Localisation recherchée
 
 ### Format compact
 

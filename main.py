@@ -130,18 +130,30 @@ class Logger:
     @staticmethod
     def setup(verbose: bool = True) -> logging.Logger:
         """Configure logger for Apify environment."""
-        logger = logging.getLogger("LeboncoinUniversalScraper")
-        logger.setLevel(logging.INFO if verbose else logging.WARNING)
-        logger.handlers.clear()
-        
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO if verbose else logging.WARNING)
-        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-        
-        return logger
+        # Try to use Apify logger
+        try:
+            from apify import Actor
+            # Apify's logger is already configured, just return a simple logger
+            logger = logging.getLogger("LeboncoinScraper")
+            logger.setLevel(logging.INFO if verbose else logging.WARNING)
+            if not logger.handlers:
+                handler = logging.StreamHandler()
+                handler.setFormatter(logging.Formatter('%(message)s'))
+                logger.addHandler(handler)
+            return logger
+        except ImportError:
+            # Fallback for local execution
+            logger = logging.getLogger("LeboncoinScraper")
+            logger.setLevel(logging.INFO if verbose else logging.WARNING)
+            logger.handlers.clear()
+            
+            handler = logging.StreamHandler()
+            handler.setLevel(logging.INFO if verbose else logging.WARNING)
+            formatter = logging.Formatter('[%(levelname)s] %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            
+            return logger
 
 
 # ============================================================================
@@ -321,20 +333,53 @@ class AdTransformer:
     def create_detailed_ad(ad: Any, search_context: Dict[str, Any]) -> Dict[str, Any]:
         """Create detailed ad dictionary with all available fields."""
         location = ad.location if hasattr(ad, 'location') else None
+        user = ad.user if hasattr(ad, 'user') else None
         
         # Extract all attributes
         attributes = DataProcessor.extract_all_attributes(
             ad.attributes if hasattr(ad, 'attributes') else []
         )
         
+        # Extract user data
+        user_data = None
+        if user:
+            user_data = {
+                "id": user.id if hasattr(user, 'id') else None,
+                "name": user.name if hasattr(user, 'name') else None,
+                "account_type": user.account_type if hasattr(user, 'account_type') else None,
+                "is_pro": user.is_pro if hasattr(user, 'is_pro') else None,
+                "location": user.location if hasattr(user, 'location') else None,
+                "profile_picture": user.profile_picture if hasattr(user, 'profile_picture') else None,
+                "registered_at": DataProcessor.normalize_datetime(
+                    user.registered_at if hasattr(user, 'registered_at') else None
+                ),
+                "description": user.description if hasattr(user, 'description') else None,
+                "store_id": user.store_id if hasattr(user, 'store_id') else None,
+                "total_ads": user.total_ads if hasattr(user, 'total_ads') else None,
+                "badges": user.badges if hasattr(user, 'badges') else [],
+            }
+        
         # Base data
         ad_data = {
+            # IDs and basic info
             "id": ad.id if hasattr(ad, 'id') else None,
             "url": ad.url if hasattr(ad, 'url') else None,
+            "title": ad.title if hasattr(ad, 'title') else None,
             "subject": ad.subject if hasattr(ad, 'subject') else None,
             "body": ad.body if hasattr(ad, 'body') else None,
+            
+            # Category
+            "category_id": ad.category_id if hasattr(ad, 'category_id') else None,
+            "category_name": ad.category_name if hasattr(ad, 'category_name') else None,
+            
+            # Price
             "price": ad.price if hasattr(ad, 'price') else None,
             "price_formatted": f"{ad.price}€" if hasattr(ad, 'price') and ad.price else None,
+            
+            # Status and type
+            "ad_type": ad.ad_type if hasattr(ad, 'ad_type') else None,
+            "status": ad.status if hasattr(ad, 'status') else None,
+            "brand": ad.brand if hasattr(ad, 'brand') else None,
             
             # Dates
             "first_publication_date": DataProcessor.normalize_datetime(
@@ -343,7 +388,16 @@ class AdTransformer:
             "index_date": DataProcessor.normalize_datetime(
                 ad.index_date if hasattr(ad, 'index_date') else None
             ),
+            "expiration_date": DataProcessor.normalize_datetime(
+                ad.expiration_date if hasattr(ad, 'expiration_date') else None
+            ),
             "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            
+            # Contact info
+            "has_phone": ad.has_phone if hasattr(ad, 'has_phone') else None,
+            
+            # Engagement
+            "favorites": ad.favorites if hasattr(ad, 'favorites') else None,
             
             # Location
             "city": location.city if location else None,
@@ -355,12 +409,15 @@ class AdTransformer:
             "latitude": location.lat if location else None,
             "longitude": location.lng if location else None,
             
-            # Attributes
+            # Attributes (category-specific fields)
             "attributes": attributes,
             
-            # Images (ad.images is already a list of URL strings)
+            # Images
             "images": ad.images if hasattr(ad, 'images') and ad.images else [],
             "image_count": len(ad.images) if hasattr(ad, 'images') and ad.images else 0,
+            
+            # User/Seller info
+            "user": user_data,
             
             # Search context
             "search_category": search_context.get("category"),
@@ -423,9 +480,9 @@ class ScraperEngine:
                 )
                 if proxy_config:
                     proxy_url = await proxy_config.new_url()
-                    self.logger.info(f"✓ Using Apify proxy: {proxy_url[:50]}...")
+                    self.logger.info(f"Proxy configured successfully")
             except Exception as e:
-                self.logger.warning(f"⚠ Failed to initialize Apify proxy: {e}")
+                self.logger.warning(f"Failed to configure proxy: {e}")
         
         # Initialize client with or without proxy
         if proxy_url:
@@ -439,10 +496,10 @@ class ScraperEngine:
                 password=parsed.password
             )
             self.client = lbc.Client(proxy=proxy)
-            self.logger.info("✓ Client initialized with proxy")
+            self.logger.info("Leboncoin client initialized with proxy")
         else:
             self.client = lbc.Client()
-            self.logger.info("✓ Client initialized without proxy")
+            self.logger.info("Leboncoin client initialized without proxy")
     
     def build_search_params(self, location: Any = None) -> Dict[str, Any]:
         """Build search parameters for API call."""
@@ -526,7 +583,7 @@ class ScraperEngine:
     
     async def scrape_location(self, location: Any, location_name: str) -> List[Dict[str, Any]]:
         """Scrape all ads for a specific location."""
-        self.logger.info(f"╔═══ Starting location: {location_name} ═══╗")
+        self.logger.info(f"Starting scrape for location: {location_name}")
         
         # Determine if we need URL-based search (for departments) or params-based
         search_params = self.build_search_params(location)
@@ -534,7 +591,7 @@ class ScraperEngine:
         
         if use_url and isinstance(location, str):
             search_url = self.build_search_url(location)
-            self.logger.info(f"  Using URL: {search_url[:100]}...")
+            self.logger.info(f"Using URL-based search for department")
         
         search_context = {
             "category": self.config.category,
@@ -548,7 +605,7 @@ class ScraperEngine:
         
         while True:
             try:
-                self.logger.info(f"  → Page {page}{f'/{total_pages}' if total_pages else ''}...")
+                self.logger.info(f"Fetching page {page}{f'/{total_pages}' if total_pages else ''}")
                 
                 # Search using URL or params
                 if use_url:
@@ -559,10 +616,10 @@ class ScraperEngine:
                 if page == 1:
                     total_pages = result.max_pages if hasattr(result, 'max_pages') else None
                     total_results = result.total if hasattr(result, 'total') else 0
-                    self.logger.info(f"  ℹ Total: {total_results} ads, {total_pages} pages")
+                    self.logger.info(f"Found {total_results} total ads across {total_pages} pages")
                 
                 if not result.ads:
-                    self.logger.info(f"  ⚠ No ads on page {page}")
+                    self.logger.info(f"No more ads found on page {page}")
                     break
                 
                 page_ads = 0
@@ -570,7 +627,7 @@ class ScraperEngine:
                     try:
                         # Skip if ad is not a proper object
                         if not hasattr(ad, 'id') or isinstance(ad, str):
-                            self.logger.warning(f"  ⚠ Skipping invalid ad object: {type(ad)}")
+                            self.logger.warning(f"Skipping invalid ad object of type: {type(ad)}")
                             continue
                         
                         # Create ad data
@@ -592,7 +649,7 @@ class ScraperEngine:
                         ):
                             old_ads_count += 1
                             if old_ads_count >= self.config.consecutive_old_limit:
-                                self.logger.info(f"  ⏹ Age cutoff reached ({old_ads_count} old ads)")
+                                self.logger.info(f"Age cutoff reached after {old_ads_count} consecutive old ads")
                                 return all_ads
                         else:
                             old_ads_count = 0
@@ -608,45 +665,40 @@ class ScraperEngine:
                         await ApifyAdapter.push_data(ad_data)
                         
                     except Exception as e:
-                        self.logger.error(f"  ✗ Error processing ad: {e}")
+                        self.logger.error(f"Error processing ad: {e}")
                         self.stats["errors"] += 1
                         continue
                 
-                self.logger.info(f"  ✓ Extracted {page_ads} unique ads from page {page}")
+                self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
                 self.stats["pages_processed"] += 1
                 
                 # Check pagination limits
                 if self.config.max_pages > 0 and page >= self.config.max_pages:
-                    self.logger.info(f"  ⏹ Max pages limit reached ({self.config.max_pages})")
+                    self.logger.info(f"Max pages limit reached ({self.config.max_pages})")
                     break
                 
                 if total_pages and page >= total_pages:
-                    self.logger.info(f"  ✓ Reached last page")
+                    self.logger.info(f"Reached last page")
                     break
                 
                 page += 1
                 time.sleep(self.config.delay_between_pages)
                 
             except Exception as e:
-                self.logger.error(f"  ✗ Error on page {page}: {e}")
+                self.logger.error(f"Error fetching page {page}: {e}")
                 self.stats["errors"] += 1
                 break
         
-        self.logger.info(f"╚═══ Completed: {location_name} ({len(all_ads)} ads) ═══╝")
+        self.logger.info(f"Completed location {location_name}: {len(all_ads)} ads extracted")
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
         """Execute complete scraping pipeline."""
-        self.logger.info("═" * 70)
-        self.logger.info("🚀 LEBONCOIN UNIVERSAL SCRAPER - STARTING")
-        self.logger.info("═" * 70)
+        self.logger.info("Starting Leboncoin scraper")
         
         # Log configuration
         config_summary = self.config.to_dict()
-        self.logger.info(f"Configuration:")
-        for key, value in config_summary.items():
-            self.logger.info(f"  • {key}: {value}")
-        self.logger.info("═" * 70)
+        self.logger.info(f"Configuration: {config_summary}")
         
         # Initialize client
         await self.initialize_client()
@@ -658,7 +710,7 @@ class ScraperEngine:
         )
         
         if not locations_list:
-            self.logger.warning("⚠ No valid locations provided, searching globally")
+            self.logger.warning("No valid locations provided, searching globally")
             locations_list = [None]
         
         self.logger.info(f"Processing {len(locations_list)} location(s)")
@@ -678,18 +730,13 @@ class ScraperEngine:
                     time.sleep(self.config.delay_between_locations)
                     
             except Exception as e:
-                self.logger.error(f"✗ Failed location {location_name}: {e}")
+                self.logger.error(f"Failed to scrape location {location_name}: {e}")
                 self.stats["errors"] += 1
                 continue
         
         # Final summary
-        self.logger.info("\n" + "═" * 70)
-        self.logger.info("✅ SCRAPING COMPLETED")
-        self.logger.info("═" * 70)
-        self.logger.info(f"Statistics:")
-        for key, value in self.stats.items():
-            self.logger.info(f"  • {key}: {value}")
-        self.logger.info("═" * 70)
+        self.logger.info("Scraping completed successfully")
+        self.logger.info(f"Final statistics: {self.stats}")
         
         return {
             "stats": self.stats,
@@ -753,7 +800,7 @@ async def main() -> None:
         with open("scraper_results.json", "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"\n📁 Results saved to: scraper_results.json")
+        logger.info("Results saved to: scraper_results.json")
 
 
 if __name__ == "__main__":
