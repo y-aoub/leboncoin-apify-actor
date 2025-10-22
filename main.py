@@ -84,7 +84,7 @@ class Config:
         
         # Output settings
         self.output_format = input_data.get("output_format", "detailed")
-    
+        
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary."""
         return {
@@ -117,15 +117,15 @@ class Logger:
             return logger
         except ImportError:
             logger = logging.getLogger("LeboncoinScraper")
-            logger.setLevel(logging.INFO if verbose else logging.WARNING)
-            logger.handlers.clear()
-            handler = logging.StreamHandler()
-            handler.setLevel(logging.INFO if verbose else logging.WARNING)
-            formatter = logging.Formatter('[%(levelname)s] %(message)s')
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            
-            return logger
+        logger.setLevel(logging.INFO if verbose else logging.WARNING)
+        logger.handlers.clear()
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.INFO if verbose else logging.WARNING)
+        formatter = logging.Formatter('[%(levelname)s] %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        
+        return logger
 
 
 # ============================================================================
@@ -417,9 +417,9 @@ class ScraperEngine:
                 )
                 if proxy_config:
                     proxy_url = await proxy_config.new_url()
-                    self.logger.info(f"Proxy configured successfully")
+                    self.logger.info("Proxy configured successfully")
             except Exception as e:
-                self.logger.warning(f"Failed to configure proxy: {e}")
+                self.logger.error(f"Failed to configure proxy: {e}")
         
         # Initialize client with or without proxy
         if proxy_url:
@@ -464,8 +464,8 @@ class ScraperEngine:
         owner_type_str = self.config.owner_type
         if owner_type_str and owner_type_str != "all":
             owner_type = EnumMapper.get_owner_type(owner_type_str)
-            if owner_type:
-                params["owner_type"] = owner_type
+        if owner_type:
+            params["owner_type"] = owner_type
         
         # Add price range
         if self.config.price_min is not None or self.config.price_max is not None:
@@ -551,13 +551,13 @@ class ScraperEngine:
                     result = self.client.search(url=search_url, page=page, limit=self.config.limit_per_page)
                 else:
                     result = self.client.search(**search_params, page=page)
-
+                
                 # Normalize iterator result
                 ads_iter = getattr(result, 'ads', None)
                 if ads_iter is None:
                     # Some versions return an iterator directly
                     ads_iter = result
-
+                
                 if page == 1:
                     total_pages = getattr(result, 'max_pages', None)
                     total_results = getattr(result, 'total', None) or 0
@@ -657,7 +657,7 @@ class ScraperEngine:
             
             # Log page info on first page
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
-                self.logger.info(f"Total pages: {result.max_pages}, Total results: {result.total}")
+                self.logger.info(f"Total pages available: {result.max_pages}, Total results: {result.total}")
             
             # Check if we have ads
             if not result.ads:
@@ -687,7 +687,7 @@ class ScraperEngine:
                             if ad_age_days > self.config.max_age_days:
                                 old_ads_count += 1
                                 if old_ads_count >= self.config.consecutive_old_limit:
-                                    self.logger.info(f"Age cutoff reached")
+                                    self.logger.info(f"Age cutoff reached: {old_ads_count} consecutive old ads found")
                                     return page_ads, True  # Stop scraping
                                 continue
                             else:
@@ -743,11 +743,11 @@ class ScraperEngine:
             clean_query = urlencode(query_params, doseq=True)
             clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', clean_query, ''))
             
-            self.logger.info(f"Cleaned URL: {clean_url}")
+            self.logger.info(f"URL validated and cleaned: {clean_url}")
             self.config.direct_url = clean_url
             
         except Exception as e:
-            self.logger.error(f"Direct URL validation error: {e}")
+            self.logger.error(f"URL validation failed: {e}")
             self.stats["errors"] += 1
             return all_ads
 
@@ -756,7 +756,7 @@ class ScraperEngine:
         batch_size = 5  # Push to Apify every N pages for lower latency
         batch_ads = []
         
-        self.logger.info(f"Starting sequential scraping (optimized for low latency)")
+        self.logger.info("Starting sequential scraping with minimal latency")
         
         while page <= max_pages:
             self.logger.info(f"Scraping page {page}...")
@@ -772,26 +772,26 @@ class ScraperEngine:
                 self.stats["unique_ads"] += len(page_ads)
                 self.stats["pages_processed"] += 1
                 
-                self.logger.info(f"Extracted {len(page_ads)} ads from page {page}")
+                self.logger.info(f"Page {page}: extracted {len(page_ads)} unique ads")
             
             # Push batch to Apify when batch is full (reduces network latency)
             if len(batch_ads) >= batch_size * self.config.limit_per_page or should_stop:
                 if batch_ads:
                     await ApifyAdapter.push_data(batch_ads)
-                    self.logger.info(f"Pushed batch of {len(batch_ads)} ads to Apify")
+                    self.logger.info(f"Batch pushed to Apify: {len(batch_ads)} ads")
                     batch_ads = []
             
             if should_stop:
-                self.logger.info("Stopping: no more ads or age cutoff reached")
+                self.logger.info("Scraping stopped: age cutoff or no more results")
                 break
             
             if not page_ads:
-                self.logger.info("No more ads found")
+                self.logger.info("Scraping stopped: no more ads available")
                 break
             
             # Check pagination limits
             if page >= max_pages:
-                self.logger.info(f"Max pages limit reached ({max_pages})")
+                self.logger.info(f"Scraping stopped: max pages limit reached ({max_pages} pages)")
                 break
             
             page += 1
@@ -803,19 +803,24 @@ class ScraperEngine:
         # Push remaining ads
         if batch_ads:
             await ApifyAdapter.push_data(batch_ads)
-            self.logger.info(f"Pushed final batch of {len(batch_ads)} ads to Apify")
+            self.logger.info(f"Final batch pushed to Apify: {len(batch_ads)} ads")
         
-        self.logger.info(f"Completed URL scraping: {len(all_ads)} ads extracted")
+        self.logger.info(f"Scraping completed successfully: {len(all_ads)} total ads extracted")
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
         """Execute URL scraping pipeline."""
-        self.logger.info("Starting Leboncoin URL scraper")
+        self.logger.info("=" * 70)
+        self.logger.info("Leboncoin URL Scraper - Starting")
+        self.logger.info("=" * 70)
         
         # Log configuration
         config_summary = self.config.to_dict()
-        self.logger.info(f"URL: {self.config.direct_url}")
-        self.logger.info(f"Max pages: {self.config.max_pages}")
+        self.logger.info(f"Configuration:")
+        self.logger.info(f"  - URL: {self.config.direct_url}")
+        self.logger.info(f"  - Max pages: {self.config.max_pages}")
+        self.logger.info(f"  - Delay between pages: {self.config.delay_between_pages}s")
+        self.logger.info(f"  - Max age filter: {self.config.max_age_days} days" if self.config.max_age_days > 0 else f"  - Max age filter: disabled")
         
         # Initialize client
         await self.initialize_client()
@@ -824,8 +829,14 @@ class ScraperEngine:
         all_ads = await self.scrape_from_url()
         
         # Final summary
-        self.logger.info("Scraping completed successfully")
-        self.logger.info(f"Final statistics: {self.stats}")
+        self.logger.info("=" * 70)
+        self.logger.info("Scraping Session Summary")
+        self.logger.info("=" * 70)
+        self.logger.info(f"Total ads extracted: {self.stats['unique_ads']}")
+        self.logger.info(f"Pages processed: {self.stats['pages_processed']}")
+        self.logger.info(f"Duplicates skipped: {self.stats['duplicates']}")
+        self.logger.info(f"Errors encountered: {self.stats['errors']}")
+        self.logger.info("=" * 70)
         
         return {
             "stats": self.stats,
