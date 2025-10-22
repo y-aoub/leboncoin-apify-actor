@@ -103,27 +103,36 @@ class Config:
 # ============================================================================
 
 class Logger:
-    """Professional logging with colors and Apify integration."""
+    """Professional logging with Apify-style formatting."""
     
     @staticmethod
     def setup(verbose: bool = True) -> logging.Logger:
-        """Configure professional logging with colors."""
-        logger = colorlog.getLogger("LeboncoinScraper")
+        """Configure Apify-style logging with minimal color."""
+        logger = colorlog.getLogger("scraper")
         logger.setLevel(logging.INFO if verbose else logging.WARNING)
         logger.handlers.clear()
         
-        # Create a color formatter
-        formatter = colorlog.ColoredFormatter(
-            "%(log_color)s%(asctime)s [%(levelname)-8s] %(message)s%(reset)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+        # Create Apify-style formatter (only INFO in green)
+        class CustomFormatter(colorlog.ColoredFormatter):
+            def formatTime(self, record, datefmt=None):
+                ct = self.converter(record.created)
+                t = time.strftime("%Y-%m-%dT%H:%M:%S", ct)
+                msec = int(record.msecs)
+                return f"{t}.{msec:03d}"
+
+        formatter = CustomFormatter(
+            "%(asctime)sZ %(log_color)s%(levelname)-5s %(message)s",
+            datefmt=None,
             reset=True,
             log_colors={
-                'DEBUG':    'cyan',
                 'INFO':     'green',
-                'WARNING': 'yellow',
-                'ERROR':   'red',
-                'CRITICAL': 'red,bg_white',
-            }
+                'WARNING': 'white',
+                'ERROR':   'white',
+                'CRITICAL': 'white',
+                'DEBUG': 'white'
+            },
+            secondary_log_colors={},
+            style='%'
         )
         
         # Create a stream handler
@@ -609,7 +618,7 @@ class ScraperEngine:
             
             # Log page info on first page
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
-                self.logger.info(f"Total pages available: {result.max_pages}, Total results: {result.total}")
+                self.logger.info(f"Found {result.total} ads in {result.max_pages} pages")
             
             # Check if we have ads
             if not result.ads:
@@ -621,44 +630,33 @@ class ScraperEngine:
             # Iterate directly
             for ad in result.ads:
                 try:
-                    # Validate ad
+                    # Basic validation
                     if not hasattr(ad, 'id') or not ad.id:
                         continue
                     
-                    ad_id = ad.id
-                    
                     # Skip duplicates
-                    if ad_id in self.seen_ids:
+                    if ad.id in self.seen_ids:
                         self.stats["duplicates"] += 1
                         continue
                     
-                    # Check age filter
-                    if self.config.max_age_days > 0:
-                        if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
-                            ad_age_days = (datetime.now() - ad.first_publication_date).days
-                            if ad_age_days > self.config.max_age_days:
-                                old_ads_count += 1
-                                if old_ads_count >= self.config.consecutive_old_limit:
-                                    self.logger.info(f"Age cutoff reached: {old_ads_count} consecutive old ads found")
-                                    return page_ads, True  # Stop scraping
-                                continue
-                            else:
-                                old_ads_count = 0
+                    # Age filter
+                    if self.config.max_age_days > 0 and hasattr(ad, 'first_publication_date') and ad.first_publication_date:
+                        ad_age_days = (datetime.now() - ad.first_publication_date).days
+                        if ad_age_days > self.config.max_age_days:
+                            old_ads_count += 1
+                            if old_ads_count >= self.config.consecutive_old_limit:
+                                return page_ads, True
+                            continue
+                        old_ads_count = 0
                     
-                    # Transform ad (direct call - no overhead)
-                    if self.config.output_format == "detailed":
-                        ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
-                    else:
-                        ad_data = AdTransformer.create_compact_ad(ad, {"category": "URL", "location": "Direct URL"})
-                    
-                    # Add to collection
-                    self.seen_ids.add(ad_id)
+                    # Transform and add
+                    ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
+                    self.seen_ids.add(ad.id)
                     page_ads.append(ad_data)
                     
                 except Exception as e:
                     self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
                     self.stats["errors"] += 1
-                    continue
             
             return page_ads, False
             
@@ -708,71 +706,48 @@ class ScraperEngine:
         batch_size = 5  # Push to Apify every N pages for lower latency
         batch_ads = []
         
-        self.logger.info("Starting sequential scraping with minimal latency")
+        self.logger.info("Starting scraping")
         
         while page <= max_pages:
-            self.logger.info(f"Scraping page {page}...")
-            
-            # Scrape single page (synchronous, no threading overhead)
+            # Scrape page
             page_ads, should_stop = self._scrape_single_page(page)
             
             if page_ads:
                 all_ads.extend(page_ads)
                 batch_ads.extend(page_ads)
-                
                 self.stats["total_ads"] += len(page_ads)
                 self.stats["unique_ads"] += len(page_ads)
                 self.stats["pages_processed"] += 1
-                
-                self.logger.info(f"Page {page}: extracted {len(page_ads)} unique ads")
+                self.logger.info(f"Page {page}: {len(page_ads)} ads")
             
-            # Push batch to Apify when batch is full (reduces network latency)
+            # Push batch
             if len(batch_ads) >= batch_size * self.config.limit_per_page or should_stop:
                 if batch_ads:
                     await ApifyAdapter.push_data(batch_ads)
-                    self.logger.info(f"Batch pushed to Apify: {len(batch_ads)} ads")
+                    self.logger.info(f"Pushed {len(batch_ads)} ads")
                     batch_ads = []
             
-            if should_stop:
-                self.logger.info("Scraping stopped: age cutoff or no more results")
-                break
-            
-            if not page_ads:
-                self.logger.info("Scraping stopped: no more ads available")
-                break
-            
-            # Check pagination limits
-            if page >= max_pages:
-                self.logger.info(f"Scraping stopped: max pages limit reached ({max_pages} pages)")
+            # Check stop conditions
+            if should_stop or not page_ads or page >= max_pages:
                 break
             
             page += 1
-            
-            # Minimal delay if configured (0 by default for max speed)
             if self.config.delay_between_pages > 0:
                 await asyncio.sleep(self.config.delay_between_pages)
         
-        # Push remaining ads
+        # Push remaining
         if batch_ads:
             await ApifyAdapter.push_data(batch_ads)
-            self.logger.info(f"Final batch pushed to Apify: {len(batch_ads)} ads")
+            self.logger.info(f"Pushed final {len(batch_ads)} ads")
         
-        self.logger.info(f"Scraping completed successfully: {len(all_ads)} total ads extracted")
+        self.logger.info(f"Completed: {len(all_ads)} total ads")
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
         """Execute URL scraping pipeline."""
-        self.logger.info("=" * 70)
-        self.logger.info("Leboncoin URL Scraper - Starting")
-        self.logger.info("=" * 70)
-        
-        # Log configuration
-        config_summary = self.config.to_dict()
-        self.logger.info(f"Configuration:")
-        self.logger.info(f"  - URL: {self.config.direct_url}")
-        self.logger.info(f"  - Max pages: {self.config.max_pages}")
-        self.logger.info(f"  - Delay between pages: {self.config.delay_between_pages}s")
-        self.logger.info(f"  - Max age filter: {self.config.max_age_days} days" if self.config.max_age_days > 0 else f"  - Max age filter: disabled")
+        self.logger.info("Starting scraper")
+        self.logger.info(f"URL: {self.config.direct_url}")
+        self.logger.info(f"Max pages: {self.config.max_pages}, Delay: {self.config.delay_between_pages}s")
         
         # Initialize client
         await self.initialize_client()
@@ -781,19 +756,12 @@ class ScraperEngine:
         all_ads = await self.scrape_from_url()
         
         # Final summary
-        self.logger.info("=" * 70)
-        self.logger.info("Scraping Session Summary")
-        self.logger.info("=" * 70)
-        self.logger.info(f"Total ads extracted: {self.stats['unique_ads']}")
-        self.logger.info(f"Pages processed: {self.stats['pages_processed']}")
-        self.logger.info(f"Duplicates skipped: {self.stats['duplicates']}")
-        self.logger.info(f"Errors encountered: {self.stats['errors']}")
-        self.logger.info("=" * 70)
+        self.logger.info(f"Completed: {self.stats['unique_ads']} ads, {self.stats['pages_processed']} pages")
         
         return {
             "stats": self.stats,
             "ads": all_ads,
-            "config": config_summary
+            "config": self.config.to_dict()
         }
     
     def _get_location_name(self, location: Any, index: int) -> str:
