@@ -1,15 +1,17 @@
 {
-  "title": "Leboncoin Scraper",
+  "title": "Leboncoin Scraper - Configuration",
+  "description": "Scraper universel pour Leboncoin avec tous les filtres",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "category": {
       "title": "Catégorie",
       "type": "string",
-      "description": "Choisissez la catégorie d'annonces à scraper",
+      "description": "Quelle catégorie d'annonces voulez-vous scraper ?",
       "editor": "select",
       "default": "TOUTES_CATEGORIES",
-      "sectionCaption": "🔍 Recherche de base",
+      "sectionCaption": "🎯 Que recherchez-vous ?",
+      "sectionDescription": "Commencez par choisir ce que vous voulez trouver",
       "enum": [
         "TOUTES_CATEGORIES",
         "IMMOBILIER_VENTES_IMMOBILIERES",
@@ -24,167 +26,173 @@
         "EMPLOI_OFFRES_DEMPLOI"
       ],
       "enumTitles": [
-        "Toutes catégories",
-        "🏠 Immobilier - Ventes",
-        "🏠 Immobilier - Locations",
-        "🚗 Voitures",
-        "🏍️ Motos",
-        "💻 Ordinateurs",
-        "📱 Téléphones",
-        "🛋️ Ameublement",
-        "👗 Vêtements",
-        "⚽ Sport",
-        "💼 Emploi"
+        "📂 Tout rechercher",
+        "🏠 Acheter un bien immobilier",
+        "🏠 Louer un logement",
+        "🚗 Acheter une voiture",
+        "🏍️ Acheter une moto",
+        "💻 Acheter un ordinateur",
+        "📱 Acheter un téléphone",
+        "🛋️ Acheter des meubles",
+        "👗 Acheter des vêtements",
+        "⚽ Acheter du matériel de sport",
+        "💼 Trouver un emploi"
       ]
     },
     "search_text": {
-      "title": "Mots-clés",
+      "title": "Recherche par mots-clés (optionnel)",
       "type": "string",
-      "description": "Rechercher des mots spécifiques (optionnel)",
+      "description": "Ex: iPhone 13, Appartement 3 pièces, Peugeot 308...",
       "editor": "textfield",
-      "example": "iPhone 13"
+      "example": "iPhone 13 Pro",
+      "prefill": ""
     },
-    "location_type": {
-      "title": "Type de localisation",
+    "department_codes": {
+      "title": "Départements",
       "type": "string",
-      "description": "Comment voulez-vous filtrer par lieu ?",
-      "editor": "select",
-      "default": "none",
-      "enum": ["none", "department", "city"],
-      "enumTitles": ["Toute la France", "Par département", "Par ville"]
-    },
-    "locations": {
-      "title": "Localisations",
-      "type": "array",
-      "description": "Pour département : [{\"code\": \"75\"}] | Pour ville : [{\"name\": \"Paris\", \"lat\": 48.8566, \"lng\": 2.3522}]",
-      "editor": "json",
-      "prefill": []
+      "description": "Laissez vide pour toute la France, ou entrez les départements séparés par des virgules. Ex: 75, 92, 93",
+      "editor": "textfield",
+      "example": "75, 92, 93, 94",
+      "prefill": "",
+      "sectionCaption": "📍 Où chercher ?",
+      "sectionDescription": "Affinez votre recherche par zone géographique"
     },
     "price_min": {
       "title": "Prix minimum (€)",
       "type": "integer",
-      "description": "Prix minimum en euros",
+      "description": "Filtrer les annonces avec un prix minimum",
       "editor": "number",
       "minimum": 0,
-      "sectionCaption": "💰 Filtres de prix"
+      "prefill": null,
+      "sectionCaption": "💰 Budget",
+      "sectionDescription": "Définissez votre fourchette de prix"
     },
     "price_max": {
       "title": "Prix maximum (€)",
       "type": "integer",
-      "description": "Prix maximum en euros",
+      "description": "Filtrer les annonces avec un prix maximum",
       "editor": "number",
-      "minimum": 0
+      "minimum": 0,
+      "prefill": null
     },
     "filter_square_min": {
-      "title": "Surface min (m²)",
+      "title": "Surface minimale (m²)",
       "type": "integer",
-      "description": "Pour immobilier uniquement",
+      "description": "Pour l'immobilier uniquement",
       "editor": "number",
       "minimum": 0,
-      "sectionCaption": "🏠 Filtres Immobilier (optionnel)"
+      "prefill": null,
+      "sectionCaption": "🏠 Filtres Immobilier",
+      "sectionDescription": "Ces filtres s'appliquent uniquement si vous avez sélectionné une catégorie immobilière"
     },
     "filter_square_max": {
-      "title": "Surface max (m²)",
+      "title": "Surface maximale (m²)",
       "type": "integer",
-      "description": "Pour immobilier uniquement",
-      "editor": "number",
-      "minimum": 0
-    },
-    "filter_rooms_min": {
-      "title": "Pièces min",
-      "type": "integer",
-      "description": "Nombre minimum de pièces",
-      "editor": "number",
-      "minimum": 1,
-      "maximum": 10
-    },
-    "filter_rooms_max": {
-      "title": "Pièces max",
-      "type": "integer",
-      "description": "Nombre maximum de pièces",
-      "editor": "number",
-      "minimum": 1,
-      "maximum": 10
-    },
-    "filter_mileage_min": {
-      "title": "Km minimum",
-      "type": "integer",
-      "description": "Pour véhicules uniquement",
+      "description": "Pour l'immobilier uniquement",
       "editor": "number",
       "minimum": 0,
-      "sectionCaption": "🚗 Filtres Véhicules (optionnel)"
+      "prefill": null
+    },
+    "filter_rooms_min": {
+      "title": "Nombre de pièces minimum",
+      "type": "integer",
+      "description": "Pour l'immobilier uniquement",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 10,
+      "prefill": null
+    },
+    "filter_rooms_max": {
+      "title": "Nombre de pièces maximum",
+      "type": "integer",
+      "description": "Pour l'immobilier uniquement",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 10,
+      "prefill": null
     },
     "filter_mileage_max": {
-      "title": "Km maximum",
+      "title": "Kilométrage maximum",
       "type": "integer",
-      "description": "Pour véhicules uniquement",
+      "description": "Pour les véhicules uniquement. Ex: 100000 pour 100 000 km",
       "editor": "number",
-      "minimum": 0
+      "minimum": 0,
+      "prefill": null,
+      "sectionCaption": "🚗 Filtres Véhicules",
+      "sectionDescription": "Ces filtres s'appliquent uniquement si vous avez sélectionné une catégorie véhicule"
     },
     "filter_regdate_min": {
-      "title": "Année min",
+      "title": "Année minimum",
       "type": "integer",
-      "description": "Année de mise en circulation minimum",
+      "description": "Année de mise en circulation minimum. Ex: 2018",
       "editor": "number",
       "minimum": 1950,
-      "maximum": 2026
+      "maximum": 2026,
+      "prefill": null
     },
     "filter_regdate_max": {
-      "title": "Année max",
+      "title": "Année maximum",
       "type": "integer",
-      "description": "Année de mise en circulation maximum",
+      "description": "Année de mise en circulation maximum. Ex: 2024",
       "editor": "number",
       "minimum": 1950,
-      "maximum": 2026
+      "maximum": 2026,
+      "prefill": null
     },
     "filter_fuel": {
-      "title": "Carburant",
+      "title": "Type de carburant accepté",
       "type": "array",
-      "description": "1=Essence, 2=Diesel, 4=Électrique, 5=Hybride",
+      "description": "Cochez un ou plusieurs types",
       "editor": "select",
       "items": {
         "type": "string",
-        "enum": ["1", "2", "3", "4", "5", "6"]
+        "enum": ["1", "2", "4", "5"]
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "prefill": []
     },
     "max_pages": {
-      "title": "Nombre de pages maximum",
+      "title": "Nombre maximum de pages à scraper",
       "type": "integer",
-      "description": "Limitez le nombre de pages (0 = illimité). Recommandé: 10-50 pages",
+      "description": "Chaque page contient environ 35 annonces. Recommandé : 10-20 pages pour des résultats rapides",
       "editor": "number",
       "default": 10,
-      "minimum": 0,
-      "sectionCaption": "⚙️ Paramètres avancés"
+      "minimum": 1,
+      "maximum": 100,
+      "sectionCaption": "⚙️ Paramètres de scraping",
+      "sectionDescription": "Contrôlez la vitesse et la quantité de données"
     },
     "delay_between_pages": {
-      "title": "Délai entre pages (secondes)",
+      "title": "Délai entre chaque page (secondes)",
       "type": "number",
-      "description": "Temps d'attente entre chaque page (recommandé: 1-2 secondes)",
+      "description": "Plus le délai est long, moins vous risquez d'être bloqué. Recommandé : 1-2 secondes",
       "editor": "number",
       "default": 1,
       "minimum": 0.5,
-      "maximum": 10
+      "maximum": 5
     },
     "proxyConfiguration": {
-      "title": "Configuration proxy",
+      "title": "Utiliser un proxy",
       "type": "object",
-      "description": "Utilisez Apify Proxy pour éviter les blocages (recommandé pour gros volumes)",
+      "description": "⚠️ Recommandé pour éviter les blocages si vous scrapez beaucoup d'annonces. Les proxies résidentiels français sont déjà configurés.",
       "editor": "proxy",
       "prefill": {
         "useApifyProxy": true,
         "apifyProxyGroups": ["RESIDENTIAL"],
         "apifyProxyCountry": "FR"
-      }
+      },
+      "sectionCaption": "🔒 Protection anti-blocage",
+      "sectionDescription": "Activez les proxies pour éviter d'être bloqué par Leboncoin"
     },
     "output_format": {
-      "title": "Format de sortie",
+      "title": "Format des données",
       "type": "string",
-      "description": "Choisissez le niveau de détail des données",
+      "description": "Choisissez le niveau de détail",
       "editor": "select",
       "default": "detailed",
       "enum": ["detailed", "compact"],
-      "enumTitles": ["Détaillé (tous les champs)", "Compact (essentiel uniquement)"]
+      "enumTitles": ["📊 Détaillé - Toutes les informations", "⚡ Compact - L'essentiel uniquement"],
+      "sectionCaption": "📤 Format de sortie"
     }
   },
   "required": ["category"]

@@ -75,9 +75,9 @@ class Config:
         self.owner_type = input_data.get("owner_type")
         self.search_in_title_only = input_data.get("search_in_title_only", False)
         
-        # Location parameters
-        self.locations = input_data.get("locations", [])
-        self.location_type = input_data.get("location_type", "department")  # city, department, region
+        # Location parameters - simplified
+        self.locations = self._parse_locations(input_data)
+        self.location_type = "department" if self.locations else "none"
         
         # Filter parameters - build from individual fields
         self.filters = self._build_filters(input_data)
@@ -102,6 +102,26 @@ class Config:
         # Output settings
         self.output_format = input_data.get("output_format", "detailed")  # detailed, compact
         self.include_raw_data = input_data.get("include_raw_data", False)
+    
+    def _parse_locations(self, input_data: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Parse department codes from simple string input."""
+        department_codes = input_data.get("department_codes", "").strip()
+        
+        if not department_codes:
+            return []
+        
+        # Parse comma-separated department codes
+        locations = []
+        codes = [code.strip() for code in department_codes.split(",")]
+        
+        for code in codes:
+            if code:
+                # Remove any non-digit characters
+                clean_code = ''.join(filter(str.isdigit, code))
+                if clean_code:
+                    locations.append({"code": clean_code})
+        
+        return locations
     
     def _build_filters(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Build filters object from individual input fields."""
@@ -134,16 +154,8 @@ class Config:
             filters["energy_rate"] = input_data["filter_energy_rate"]
         
         # Véhicules filters
-        if input_data.get("filter_mileage_min") or input_data.get("filter_mileage_max"):
-            mileage = []
-            if input_data.get("filter_mileage_min"):
-                mileage.append(input_data["filter_mileage_min"])
-            if input_data.get("filter_mileage_max"):
-                if not mileage:
-                    mileage.append(0)
-                mileage.append(input_data["filter_mileage_max"])
-            if len(mileage) == 2:
-                filters["mileage"] = mileage
+        if input_data.get("filter_mileage_max"):
+            filters["mileage"] = [0, input_data["filter_mileage_max"]]
         
         if input_data.get("filter_regdate_min") or input_data.get("filter_regdate_max"):
             regdate = []
