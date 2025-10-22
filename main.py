@@ -24,11 +24,11 @@ class ApifyAdapter:
     """Adapter for Apify platform integration."""
     
     @staticmethod
-    def get_input() -> Dict[str, Any]:
+    async def get_input() -> Dict[str, Any]:
         """Load input from Apify or local JSON file."""
         try:
             from apify import Actor
-            return Actor.get_input() or {}
+            return await Actor.get_input() or {}
         except (ImportError, Exception):
             # Fallback to local file for testing
             if os.path.exists("apify_input.json"):
@@ -711,7 +711,7 @@ async def main() -> None:
         
         async with Actor:
             # Get input
-            input_data = Actor.get_input() or {}
+            input_data = await Actor.get_input() or {}
             
             # Setup
             config = Config(input_data)
@@ -726,7 +726,7 @@ async def main() -> None:
             
     except ImportError:
         # Local execution fallback
-        input_data = ApifyAdapter.get_input()
+        input_data = await ApifyAdapter.get_input()
         config = Config(input_data)
         logger = Logger.setup()
         
