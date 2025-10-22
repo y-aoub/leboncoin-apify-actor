@@ -15,7 +15,7 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Optional, Dict, List, Union
 from datetime import datetime, timedelta
 
-import colorlog
+import logging
 
 
 # ============================================================================
@@ -108,35 +108,27 @@ class Logger:
     @staticmethod
     def setup(verbose: bool = True) -> logging.Logger:
         """Configure Apify-style logging with minimal color."""
-        logger = colorlog.getLogger("scraper")
+        logger = logging.getLogger("scraper")
         logger.setLevel(logging.INFO if verbose else logging.WARNING)
         logger.handlers.clear()
         
         # Create Apify-style formatter (only INFO in green)
-        class CustomFormatter(colorlog.ColoredFormatter):
-            def formatTime(self, record, datefmt=None):
-                ct = self.converter(record.created)
-                t = time.strftime("%Y-%m-%dT%H:%M:%S", ct)
-                msec = int(record.msecs)
-                return f"{t}.{msec:03d}"
+        class ApifyFormatter(logging.Formatter):
+            def format(self, record):
+                # Add milliseconds to the time
+                record.created_ms = int(record.created * 1000)
+                # Format with Apify style
+                record.asctime = time.strftime("%Y-%m-%dT%H:%M:%S", self.converter(record.created))
+                record.asctime = f"{record.asctime}.{record.created_ms % 1000:03d}"
+                return super().format(record)
 
-        formatter = CustomFormatter(
-            "%(asctime)sZ %(log_color)s%(levelname)-5s %(message)s",
-            datefmt=None,
-            reset=True,
-            log_colors={
-                'INFO':     'green',
-                'WARNING': 'white',
-                'ERROR':   'white',
-                'CRITICAL': 'white',
-                'DEBUG': 'white'
-            },
-            secondary_log_colors={},
-            style='%'
+        formatter = ApifyFormatter(
+            "%(asctime)sZ [apify] %(levelname)-7s %(message)s",
+            datefmt=None
         )
         
         # Create a stream handler
-        handler = colorlog.StreamHandler()
+        handler = logging.StreamHandler()
         handler.setFormatter(formatter)
         handler.setLevel(logging.INFO if verbose else logging.WARNING)
         
@@ -661,7 +653,11 @@ class ScraperEngine:
             return page_ads, False
             
         except Exception as e:
-            self.logger.error(f"Error on page {page_num}: {e}")
+            error_msg = str(e)
+            if "Datadome" in error_msg:
+                self.logger.error(f"Access blocked by Datadome on page {page_num} (blocked by anti-bot protection)")
+            else:
+                self.logger.error(f"Failed to scrape page {page_num}: {error_msg}")
             self.stats["errors"] += 1
             return [], True
 
