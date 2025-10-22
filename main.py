@@ -73,7 +73,8 @@ class Config:
         # Pagination
         self.max_pages = input_data.get("max_pages", 10)
         self.limit_per_page = 35
-        self.delay_between_pages = input_data.get("delay_between_pages", 1)
+        self.delay_between_pages = input_data.get("delay_between_pages", 0)  # 0 = no delay for max speed
+        self.parallel_pages = input_data.get("parallel_pages", 3)  # Number of pages to scrape in parallel
         
         # Age filtering
         self.max_age_days = input_data.get("max_age_days", 0)  # 0 = disabled
@@ -90,6 +91,7 @@ class Config:
         return {
             "direct_url": self.direct_url,
             "max_pages": self.max_pages,
+            "parallel_pages": self.parallel_pages,
             "delay_between_pages": self.delay_between_pages,
             "max_age_days": self.max_age_days,
             "output_format": self.output_format
@@ -640,10 +642,82 @@ class ScraperEngine:
         self.logger.info(f"Completed location {location_name}: {len(all_ads)} ads extracted")
         return all_ads
     
+    async def _scrape_single_page(self, page_num: int) -> tuple[List[Dict[str, Any]], bool]:
+        """
+        Scrape a single page. Returns (ads_list, should_stop).
+        
+        Args:
+            page_num: Page number to scrape
+            
+        Returns:
+            Tuple of (list of ads, boolean indicating if scraping should stop)
+        """
+        try:
+            # Scrape using URL
+            result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page_num)
+            
+            # Check if we have ads
+            if not result.ads:
+                return [], True
+            
+            # Log page info on first page
+            if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
+                self.logger.info(f"Total pages: {result.max_pages}, Total results: {result.total}")
+            
+            page_ads = []
+            old_ads_count = 0
+            
+            # Iterate directly
+            for ad in result.ads:
+                try:
+                    # Validate ad
+                    if not hasattr(ad, 'id') or not ad.id:
+                        continue
+                    
+                    ad_id = ad.id
+                    
+                    # Skip duplicates
+                    if ad_id in self.seen_ids:
+                        self.stats["duplicates"] += 1
+                        continue
+                    
+                    # Check age filter
+                    if self.config.max_age_days > 0:
+                        if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
+                            ad_age_days = (datetime.now() - ad.first_publication_date).days
+                            if ad_age_days > self.config.max_age_days:
+                                old_ads_count += 1
+                                if old_ads_count >= self.config.consecutive_old_limit:
+                                    return page_ads, True  # Stop scraping
+                                continue
+                            else:
+                                old_ads_count = 0
+                    
+                    # Transform ad
+                    if self.config.output_format == "detailed":
+                        ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
+                    else:
+                        ad_data = AdTransformer.create_compact_ad(ad, {"category": "URL", "location": "Direct URL"})
+                    
+                    # Add ad
+                    self.seen_ids.add(ad_id)
+                    page_ads.append(ad_data)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
+                    self.stats["errors"] += 1
+                    continue
+            
+            return page_ads, False
+            
+        except Exception as e:
+            self.logger.error(f"Error on page {page_num}: {e}")
+            self.stats["errors"] += 1
+            return [], True
+
     async def scrape_from_url(self) -> List[Dict[str, Any]]:
-        """Scrape from a direct Leboncoin URL."""
+        """Scrape from a direct Leboncoin URL with parallel page fetching."""
         all_ads = []
-        page = 1
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
@@ -661,7 +735,6 @@ class ScraperEngine:
             
             # Clean URL: remove tracking parameters
             query_params = parse_qs(parsed.query)
-            # Remove tracking params that may cause issues
             tracking_params = ['kst', 'from', 'utm_source', 'utm_medium', 'utm_campaign']
             for param in tracking_params:
                 query_params.pop(param, None)
@@ -678,103 +751,53 @@ class ScraperEngine:
             self.stats["errors"] += 1
             return all_ads
 
-        while page <= max_pages:
-            self.logger.info(f"Scraping page {page} from URL")
+        # Parallel scraping by batches
+        current_page = 1
+        parallel_pages = self.config.parallel_pages
+        
+        self.logger.info(f"Starting parallel scraping (batch size: {parallel_pages} pages)")
+        
+        while current_page <= max_pages:
+            # Calculate batch of pages to scrape
+            page_batch = list(range(current_page, min(current_page + parallel_pages, max_pages + 1)))
             
-            try:
-                # Scrape using URL
-                result = self.client.search(url=self.config.direct_url, limit=self.config.limit_per_page, page=page)
+            self.logger.info(f"Scraping pages {page_batch[0]}-{page_batch[-1]} in parallel...")
+            
+            # Scrape pages in parallel
+            tasks = [self._scrape_single_page(page) for page in page_batch]
+            results = await asyncio.gather(*tasks)
+            
+            # Process results
+            batch_total = 0
+            should_stop = False
+            
+            for page_num, (page_ads, stop_flag) in zip(page_batch, results):
+                if page_ads:
+                    all_ads.extend(page_ads)
+                    batch_total += len(page_ads)
+                    self.stats["total_ads"] += len(page_ads)
+                    self.stats["unique_ads"] += len(page_ads)
+                    self.stats["pages_processed"] += 1
+                    
+                    # Push to Apify in batch
+                    await ApifyAdapter.push_data(page_ads)
                 
-                # Check if we have ads (like in search_leboncoin.py line 360)
-                if not result.ads:
-                    self.logger.info(f"No more ads on page {page}")
+                if stop_flag:
+                    should_stop = True
                     break
-                
-                # Log page info (like in search_leboncoin.py line 358)
-                if page == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
-                    self.logger.info(f"Total pages: {result.max_pages}, Total results: {result.total}")
-                
-                # Log ads count (like in search_leboncoin.py line 364)
-                try:
-                    self.logger.info(f"Processing {len(result.ads)} ads...")
-                except TypeError:
-                    self.logger.info(f"Processing ads (iterating)...")
-                
-                page_ads = 0
-                old_ads_count = 0
-                
-                # Iterate directly (like in search_leboncoin.py line 366)
-                for ad in result.ads:
-                    try:
-                        # Validate ad
-                        if not hasattr(ad, 'id') or not ad.id:
-                            self.logger.warning(f"Skipping ad without ID")
-                            continue
-                        
-                        ad_id = ad.id
-                        
-                        # Skip duplicates
-                        if ad_id in self.seen_ids:
-                            self.stats["duplicates"] += 1
-                            continue
-                        
-                        # Check age filter
-                        if self.config.max_age_days > 0:
-                            if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
-                                ad_age_days = (datetime.now() - ad.first_publication_date).days
-                                if ad_age_days > self.config.max_age_days:
-                                    old_ads_count += 1
-                                    if old_ads_count >= self.config.consecutive_old_limit:
-                                        self.logger.info(f"Age cutoff reached")
-                                        return all_ads
-                                    continue
-                                else:
-                                    old_ads_count = 0
-                        
-                        # Transform ad
-                        if self.config.output_format == "detailed":
-                            ad_data = AdTransformer.create_detailed_ad(ad, {"category": "URL", "location": "Direct URL"})
-                        else:
-                            ad_data = AdTransformer.create_compact_ad(ad, {"category": "URL", "location": "Direct URL"})
-                        
-                        # Add ad
-                        self.seen_ids.add(ad_id)
-                        all_ads.append(ad_data)
-                        page_ads += 1
-                        self.stats["total_ads"] += 1
-                        self.stats["unique_ads"] += 1
-                        
-                        # Push to Apify dataset
-                        await ApifyAdapter.push_data(ad_data)
-                        
-                    except Exception as e:
-                        self.logger.error(f"Error processing ad {getattr(ad, 'id', 'unknown')}: {e}")
-                        self.stats["errors"] += 1
-                        continue
-                
-                self.logger.info(f"Extracted {page_ads} unique ads from page {page}")
-                self.stats["pages_processed"] += 1
-                
-                # Stop if no more ads
-                if page_ads == 0:
-                    self.logger.info("No more ads found (all filtered or duplicates)")
-                    break
-                
-                # Check pagination limits
-                if page >= max_pages:
-                    self.logger.info(f"Max pages limit reached ({max_pages})")
-                    break
-                
-                page += 1
+            
+            self.logger.info(f"Batch complete: {batch_total} ads extracted from {len(page_batch)} pages")
+            
+            if should_stop or batch_total == 0:
+                self.logger.info("Stopping: no more ads or age cutoff reached")
+                break
+            
+            # Move to next batch
+            current_page += parallel_pages
+            
+            # Small delay between batches if configured
+            if self.config.delay_between_pages > 0 and current_page <= max_pages:
                 await asyncio.sleep(self.config.delay_between_pages)
-                
-            except StopIteration:
-                self.logger.info("Reached end of results")
-                break
-            except Exception as e:
-                self.logger.error(f"Error on page {page}: {e}")
-                self.stats["errors"] += 1
-                break
         
         self.logger.info(f"Completed URL scraping: {len(all_ads)} ads extracted")
         return all_ads
