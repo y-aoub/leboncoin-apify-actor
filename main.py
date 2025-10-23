@@ -676,11 +676,16 @@ class ScraperEngine:
         filters = {}
         
         # Known range parameters (convert "min-max" to [min, max])
-        RANGE_PARAMS = [
-            'price', 'mileage', 'regdate', 'square', 'land_plot',
-            'rooms', 'bedrooms', 'cubic_capacity', 'horse_power',
-            'seats', 'year', 'energy_rate', 'gearbox'
-        ]
+        RANGE_PARAMS = {
+            # Immobilier
+            'price', 'square', 'land_plot', 'rooms', 'bedrooms',
+            # Voitures / Véhicules
+            'mileage', 'regdate', 'cubic_capacity', 'horse_power', 'seats', 'year',
+            # Électronique / High-tech
+            'screen_size', 'storage',
+            # Général
+            'energy_rate', 'gearbox', 'weight', 'size'
+        }
         
         for key, value_list in query_params.items():
             # Skip pagination and tracking parameters
@@ -699,10 +704,9 @@ class ScraperEngine:
                     if isinstance(value, str) and '__' in value:
                         parts = value.split('__')
                         if len(parts) == 2:
-                            # Parse city and zipcode
+                            # Parse city name (remove zipcode from the end)
                             city_parts = parts[0].rsplit('_', 1)
                             city_name = city_parts[0] if len(city_parts) > 1 else parts[0]
-                            zipcode = city_parts[1] if len(city_parts) > 1 else None
                             
                             # Parse coordinates
                             coords = parts[1].split('_')
@@ -711,12 +715,12 @@ class ScraperEngine:
                                 lng = float(coords[1])
                                 radius = int(coords[2])
                                 
+                                # lbc.City only accepts: lat, lng, radius, city
                                 location = lbc.City(
                                     lat=lat,
                                     lng=lng,
                                     radius=radius,
-                                    city=city_name,
-                                    zipcode=zipcode
+                                    city=city_name
                                 )
                                 filters['locations'] = [location]
                 
@@ -725,13 +729,32 @@ class ScraperEngine:
                     if isinstance(value, str) and '-' in value:
                         parts = value.split('-', 1)
                         if len(parts) == 2:
-                            min_val = int(parts[0]) if parts[0] and parts[0].isdigit() else None
-                            max_val = int(parts[1]) if parts[1] and parts[1].isdigit() else None
+                            # Handle "min", "max", or numeric values
+                            min_str = parts[0].strip().lower()
+                            max_str = parts[1].strip().lower()
                             
+                            # Convert to int, treating "min" as None/0 and "max" as None
+                            if min_str in ['min', '']:
+                                min_val = None
+                            elif min_str.isdigit():
+                                min_val = int(min_str)
+                            else:
+                                min_val = None
+                            
+                            if max_str in ['max', '']:
+                                max_val = None
+                            elif max_str.isdigit():
+                                max_val = int(max_str)
+                            else:
+                                max_val = None
+                            
+                            # Build range list
                             if min_val is not None and max_val is not None:
                                 filters[key] = [min_val, max_val]
                             elif min_val is not None:
                                 filters[key] = [min_val]
+                            elif max_val is not None:
+                                filters[key] = [0, max_val]
                     elif isinstance(value, str) and value.isdigit():
                         # Single value
                         filters[key] = int(value)
@@ -747,15 +770,26 @@ class ScraperEngine:
                     else:
                         filters[key] = value
                 
-                # Multi-value filters (e.g., real_estate_type=1,2,3)
+                # Multi-value filters (e.g., real_estate_type=1,2,3 or fuel=essence,diesel)
                 elif isinstance(value, str) and ',' in value:
                     # Split comma-separated values
                     values = value.split(',')
-                    # Try to convert to integers
-                    try:
-                        filters[key] = [int(v) for v in values]
-                    except ValueError:
-                        filters[key] = values
+                    # Try to convert to integers, otherwise keep as strings
+                    converted = []
+                    for v in values:
+                        v = v.strip()
+                        if v.isdigit():
+                            converted.append(int(v))
+                        else:
+                            converted.append(v)
+                    filters[key] = converted
+                
+                # Boolean-like parameters (yes/no, true/false)
+                elif isinstance(value, str) and value.lower() in ['yes', 'no', 'true', 'false', '0', '1']:
+                    if value.lower() in ['yes', 'true', '1']:
+                        filters[key] = True
+                    elif value.lower() in ['no', 'false', '0']:
+                        filters[key] = False
                 
                 # All other filters: pass as-is
                 else:
@@ -763,6 +797,7 @@ class ScraperEngine:
                     if isinstance(value, str) and value.isdigit():
                         filters[key] = int(value)
                     else:
+                        # Keep as string
                         filters[key] = value
                         
             except (ValueError, IndexError, AttributeError) as e:
