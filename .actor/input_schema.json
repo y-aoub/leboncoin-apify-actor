@@ -16,13 +16,22 @@
     "max_pages": {
       "title": "Pages maximum",
       "type": "integer",
-      "description": "Nombre maximum de pages à scraper (35 annonces/page). Recommandé: 10-20",
+      "description": "Nombre maximum de pages à scraper. Recommandé: 10-20",
       "editor": "number",
       "default": 10,
       "minimum": 1,
       "maximum": 100,
       "sectionCaption": "⚙️ Paramètres de scraping",
       "sectionDescription": "Contrôlez le volume et la vitesse de scraping"
+    },
+    "limit_per_page": {
+      "title": "Annonces par page",
+      "type": "integer",
+      "description": "Nombre d'annonces à scraper par page (Leboncoin affiche généralement 35 annonces/page)",
+      "editor": "number",
+      "default": 35,
+      "minimum": 1,
+      "maximum": 100
     },
     "delay_between_pages": {
       "title": "Délai entre pages (secondes)",
