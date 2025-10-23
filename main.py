@@ -344,6 +344,7 @@ class ScraperEngine:
         self.logger = logger
         self.client = None
         self.seen_ids = set()
+        self._parsed_filters = {}  # Parsed URL filters
         self.stats = {
             "total_ads": 0,
             "unique_ads": 0,
@@ -600,10 +601,9 @@ class ScraperEngine:
             Tuple of (list of ads, boolean indicating if scraping should stop)
         """
         try:
-            # Use URL directly as documented in lbc library
-            # The library handles all filters internally
+            # Use parsed filters for precise control
             result = self.client.search(
-                url=self.config.direct_url,
+                **self._parsed_filters,
                 page=page_num,
                 limit=self.config.limit_per_page
             )
@@ -664,13 +664,121 @@ class ScraperEngine:
             self.stats["errors"] += 1
             return [], True
 
+    def _parse_url_filters(self, url: str) -> Dict[str, Any]:
+        """
+        Parse Leboncoin URL and extract all filters in lbc-compatible format.
+        Universal parser that works for ALL categories.
+        """
+        from urllib.parse import urlparse, parse_qs
+        
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+        filters = {}
+        
+        # Known range parameters (convert "min-max" to [min, max])
+        RANGE_PARAMS = [
+            'price', 'mileage', 'regdate', 'square', 'land_plot',
+            'rooms', 'bedrooms', 'cubic_capacity', 'horse_power',
+            'seats', 'year', 'energy_rate', 'gearbox'
+        ]
+        
+        for key, value_list in query_params.items():
+            # Skip pagination and tracking parameters
+            if key in ['page', 'kst', 'from', 'utm_source', 'utm_medium', 'utm_campaign']:
+                continue
+            
+            value = value_list[0] if len(value_list) == 1 else value_list
+            
+            try:
+                # Category: integer ID
+                if key == 'category':
+                    filters['category'] = int(value)
+                
+                # Locations: parse format "City_Zipcode__lat_lng_radius"
+                elif key == 'locations':
+                    if isinstance(value, str) and '__' in value:
+                        parts = value.split('__')
+                        if len(parts) == 2:
+                            # Parse city and zipcode
+                            city_parts = parts[0].rsplit('_', 1)
+                            city_name = city_parts[0] if len(city_parts) > 1 else parts[0]
+                            zipcode = city_parts[1] if len(city_parts) > 1 else None
+                            
+                            # Parse coordinates
+                            coords = parts[1].split('_')
+                            if len(coords) >= 3:
+                                lat = float(coords[0])
+                                lng = float(coords[1])
+                                radius = int(coords[2])
+                                
+                                location = lbc.City(
+                                    lat=lat,
+                                    lng=lng,
+                                    radius=radius,
+                                    city=city_name,
+                                    zipcode=zipcode
+                                )
+                                filters['locations'] = [location]
+                
+                # Range parameters: convert "min-max" to [min, max]
+                elif key in RANGE_PARAMS:
+                    if isinstance(value, str) and '-' in value:
+                        parts = value.split('-', 1)
+                        if len(parts) == 2:
+                            min_val = int(parts[0]) if parts[0] and parts[0].isdigit() else None
+                            max_val = int(parts[1]) if parts[1] and parts[1].isdigit() else None
+                            
+                            if min_val is not None and max_val is not None:
+                                filters[key] = [min_val, max_val]
+                            elif min_val is not None:
+                                filters[key] = [min_val]
+                    elif isinstance(value, str) and value.isdigit():
+                        # Single value
+                        filters[key] = int(value)
+                
+                # Text search
+                elif key == 'text':
+                    filters['text'] = value
+                
+                # Boolean/enum-like parameters (pass as string or convert to int if numeric)
+                elif key in ['ad_type', 'owner_type', 'sort']:
+                    if isinstance(value, str) and value.isdigit():
+                        filters[key] = int(value)
+                    else:
+                        filters[key] = value
+                
+                # Multi-value filters (e.g., real_estate_type=1,2,3)
+                elif isinstance(value, str) and ',' in value:
+                    # Split comma-separated values
+                    values = value.split(',')
+                    # Try to convert to integers
+                    try:
+                        filters[key] = [int(v) for v in values]
+                    except ValueError:
+                        filters[key] = values
+                
+                # All other filters: pass as-is
+                else:
+                    # Try to convert to int if it's numeric
+                    if isinstance(value, str) and value.isdigit():
+                        filters[key] = int(value)
+                    else:
+                        filters[key] = value
+                        
+            except (ValueError, IndexError, AttributeError) as e:
+                # If parsing fails, log and skip this parameter
+                self.logger.warning(f"Could not parse filter '{key}={value}': {e}")
+                continue
+        
+        return filters
+    
     async def scrape_from_url(self) -> List[Dict[str, Any]]:
         """Scrape from a direct Leboncoin URL (sequential, optimized for speed)."""
         all_ads = []
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
-        # Validate URL only
+        # Validate and parse URL
         try:
             from urllib.parse import urlparse
             parsed = urlparse(self.config.direct_url)
@@ -682,10 +790,13 @@ class ScraperEngine:
             if "/recherche" not in parsed.path:
                 raise ValueError("URL non supportée: utilisez une URL de recherche (contenant /recherche)")
             
-            self.logger.info("URL validated successfully")
+            # Parse all filters from URL
+            self._parsed_filters = self._parse_url_filters(self.config.direct_url)
+            filter_names = ', '.join(self._parsed_filters.keys()) if self._parsed_filters else 'none'
+            self.logger.info(f"Parsed {len(self._parsed_filters)} filters: {filter_names}")
             
         except Exception as e:
-            self.logger.error(f"URL validation failed: {e}")
+            self.logger.error(f"URL validation/parsing failed: {e}")
             self.stats["errors"] += 1
             return all_ads
 
