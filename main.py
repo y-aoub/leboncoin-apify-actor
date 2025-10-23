@@ -73,7 +73,7 @@ class Config:
         
         # Pagination
         self.max_pages = input_data.get("max_pages", 10)
-        self.limit_per_page = 35
+        self.limit_per_page = input_data.get("limit_per_page", 35)
         self.delay_between_pages = input_data.get("delay_between_pages", 0)  # 0 = no delay for max speed
         
         # Age filtering
@@ -91,6 +91,7 @@ class Config:
         return {
             "direct_url": self.direct_url,
             "max_pages": self.max_pages,
+            "limit_per_page": self.limit_per_page,
             "delay_between_pages": self.delay_between_pages,
             "max_age_days": self.max_age_days,
             "output_format": self.output_format
