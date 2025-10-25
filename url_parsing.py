@@ -12,6 +12,9 @@ from typing import Dict, Any, List, Optional, Union, Tuple
 class LeboncoinURLParser:
     """Generic parser for Leboncoin search URLs to search configuration."""
     
+    # Extract category mapping from lbc.Category enum
+    CATEGORY_MAP = {cat.value: cat for cat in lbc.Category}
+    
     # Only fundamental mappings for core parameters
     OWNER_TYPE_MAP = {
         "private": lbc.OwnerType.PRIVATE,
@@ -67,12 +70,9 @@ class LeboncoinURLParser:
                     
                 elif key == "category":
                     try:
-                        category_id = int(value)
-                        # Try to find the category in lbc.Category
-                        for cat in lbc.Category:
-                            if cat.value == str(category_id):
-                                search_config['category'] = cat
-                                break
+                        category_id = str(value)  # Convert to string for mapping lookup
+                        if category_id in LeboncoinURLParser.CATEGORY_MAP:
+                            search_config['category'] = LeboncoinURLParser.CATEGORY_MAP[category_id]
                         else:
                             # Fallback to TOUTES_CATEGORIES if not found
                             search_config['category'] = lbc.Category.TOUTES_CATEGORIES
