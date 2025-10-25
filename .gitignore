@@ -44,7 +44,8 @@ storage/
 .crawlee/
 
 # Streamlit UI
-ui.py
+test_example_urls.py
+
 
 # Output files
 *.json

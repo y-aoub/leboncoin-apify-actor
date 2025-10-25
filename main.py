@@ -9,11 +9,10 @@ Author: Advanced Scraping Solutions
 import lbc
 import json
 import logging
-import time
 import os
 import asyncio
 from dataclasses import fields, is_dataclass
-from typing import Any, Optional, Dict, List, Union
+from typing import Any, Optional, Dict, List
 from datetime import datetime, timedelta
 
 
@@ -68,8 +67,21 @@ class Config:
     
     def __init__(self, input_data: Dict[str, Any]):
         """Initialize configuration from input data."""
-        # URL scraping (only mode)
-        self.direct_url = input_data.get("direct_url", "").strip()
+        # Check if search_args are provided directly or need to be parsed from URL
+        if "search_args" in input_data and input_data["search_args"]:
+            # Direct search arguments provided
+            self.search_args = input_data["search_args"]
+            self.direct_url = ""  # No URL when using direct search args
+            # print(f"Using direct search arguments: {self.search_args}")
+        else:
+            # URL scraping mode - parse URL to search args
+            raw_url = input_data.get("direct_url", "").strip()
+            self.direct_url = raw_url
+            self.search_args = URLParser.parse_url_to_search_args(raw_url)
+            
+            # Log parsed search arguments
+            if self.search_args:
+                print(f"Parsed search arguments from URL: {self.search_args}")
         
         # Pagination
         self.max_pages = input_data.get("max_pages", 10)
@@ -128,46 +140,569 @@ class Logger:
         return logger
 
 
+
+
 # ============================================================================
-# CATEGORY & ENUM UTILITIES (kept for compatibility)
+# URL PARSER
 # ============================================================================
 
-class EnumMapper:
-    """Map string inputs to lbc enums."""
+class URLParser:
+    """Parse Le Bon Coin URLs and convert to search arguments."""
+    
+    # Category mapping from URL to lbc.Category (based on real fdata.json)
+    CATEGORY_MAP = {
+        # Toutes catégories
+        "0": "ALL",
+        
+        # Emploi
+        "71": "EMPLOI",
+        "33": "EMPLOI",  # Offres d'emploi
+        "74": "EMPLOI",  # Formations professionnelles
+        
+        # Véhicules
+        "1": "VEHICULES",
+        "2": "VEHICULES",  # Voitures
+        "3": "VEHICULES",  # Motos
+        "4": "VEHICULES",  # Caravaning
+        "5": "VEHICULES",  # Utilitaires
+        "300": "VEHICULES",  # Camions
+        "7": "VEHICULES",  # Nautisme
+        "6": "VEHICULES",  # Équipement auto
+        "44": "VEHICULES",  # Équipement moto
+        "50": "VEHICULES",  # Équipement caravaning
+        "51": "VEHICULES",  # Équipement nautisme
+        
+        # Immobilier
+        "8": "IMMOBILIER",
+        "9": "IMMOBILIER",  # Ventes immobilières
+        "2001": "IMMOBILIER",  # Immobilier Neuf
+        "10": "IMMOBILIER",  # Locations
+        "11": "IMMOBILIER",  # Colocations
+        "13": "IMMOBILIER",  # Bureaux & Commerces
+        
+        # Locations de vacances
+        "66": "VACANCES",
+        "12": "VACANCES",  # Locations saisonnières
+        
+        # Électronique
+        "14": "MULTIMEDIA",
+        "15": "MULTIMEDIA",  # Ordinateurs
+        "83": "MULTIMEDIA",  # Accessoires informatique
+        "82": "MULTIMEDIA",  # Tablettes & Liseuses
+        "16": "MULTIMEDIA",  # Photo, audio & vidéo
+        "17": "MULTIMEDIA",  # Téléphones & Objets connectés
+        "81": "MULTIMEDIA",  # Accessoires téléphone & Objets connectés
+        "43": "MULTIMEDIA",  # Consoles
+        "84": "MULTIMEDIA",  # Jeux vidéo
+        
+        # Maison & Jardin
+        "18": "MAISON",
+        "19": "MAISON",  # Ameublement
+        "96": "MAISON",  # Papeterie & Fournitures scolaires
+        "20": "MAISON",  # Électroménager
+        "45": "MAISON",  # Arts de la table
+        "39": "MAISON",  # Décoration
+        "46": "MAISON",  # Linge de maison
+        "21": "MAISON",  # Bricolage
+        "52": "MAISON",  # Jardin & Plantes
+        
+        # Famille
+        "79": "FAMILLE",
+        "23": "FAMILLE",  # Équipement bébé
+        "80": "FAMILLE",  # Mobilier enfant
+        "54": "FAMILLE",  # Vêtements bébé
+        
+        # Mode
+        "72": "MODE",
+        "22": "MODE",  # Vêtements
+        "53": "MODE",  # Chaussures
+        "47": "MODE",  # Accessoires & Bagagerie
+        "42": "MODE",  # Montres & Bijoux
+        
+        # Loisirs
+        "24": "LOISIRS",
+        "89": "LOISIRS",  # Antiquités
+        "40": "LOISIRS",  # Collection
+        "26": "LOISIRS",  # CD - Musique
+        "25": "LOISIRS",  # DVD - Films
+        "30": "LOISIRS",  # Instruments de musique
+        "27": "LOISIRS",  # Livres
+        "86": "LOISIRS",  # Modélisme
+        "48": "LOISIRS",  # Vins & Gastronomie
+        "41": "LOISIRS",  # Jeux & Jouets
+        "88": "LOISIRS",  # Loisirs créatifs
+        "29": "LOISIRS",  # Sport & Plein air
+        "55": "LOISIRS",  # Vélos
+        "85": "LOISIRS",  # Équipements vélos
+        "1002": "LOISIRS",  # Vélos (autre ID)
+        "1003": "LOISIRS",  # Équipements vélos (autre ID)
+        
+        # Animaux
+        "75": "ANIMAUX",
+        "28": "ANIMAUX",  # Animaux
+        "76": "ANIMAUX",  # Accessoires animaux
+        "77": "ANIMAUX",  # Animaux perdus
+        
+        # Matériel professionnel
+        "56": "MATERIEL_PROFESSIONNEL",
+        "105": "MATERIEL_PROFESSIONNEL",  # Tracteurs
+        "57": "MATERIEL_PROFESSIONNEL",  # Matériel agricole
+        "59": "MATERIEL_PROFESSIONNEL",  # BTP - Chantier gros-oeuvre
+        "106": "MATERIEL_PROFESSIONNEL",  # Poids lourds
+        "58": "MATERIEL_PROFESSIONNEL",  # Manutention - Levage
+        "32": "MATERIEL_PROFESSIONNEL",  # Équipements industriels
+        "61": "MATERIEL_PROFESSIONNEL",  # Équipements pour restaurants & hôtels
+        "62": "MATERIEL_PROFESSIONNEL",  # Équipements & Fournitures de bureau
+        "63": "MATERIEL_PROFESSIONNEL",  # Équipements pour commerces & marchés
+        "64": "MATERIEL_PROFESSIONNEL",  # Matériel médical
+        
+        # Services
+        "31": "SERVICES",
+        "101": "SERVICES",  # Artistes & Musiciens
+        "100": "SERVICES",  # Baby-Sitting
+        "35": "SERVICES",  # Billetterie
+        "65": "SERVICES",  # Covoiturage
+        "36": "SERVICES",  # Cours particuliers
+        "103": "SERVICES",  # Entraide entre voisins
+        "49": "SERVICES",  # Évènements
+        "99": "SERVICES",  # Services à la personne
+        "102": "SERVICES",  # Services aux animaux
+        "92": "SERVICES",  # Services de déménagement
+        "95": "SERVICES",  # Services de réparations électroniques
+        "93": "SERVICES",  # Services de réparations mécaniques
+        "97": "SERVICES",  # Services de jardinerie & bricolage
+        "98": "SERVICES",  # Services évènementiels
+        "34": "SERVICES",  # Autres services
+        
+        # Dons
+        "1000": "DONS",
+        
+        # Divers
+        "37": "DIVERS",
+        "38": "DIVERS",  # Autres
+        
+        # Services spécialisés (mappés vers SERVICES)
+        "1001": "SERVICES",  # Services de déménagement
+        "1004": "SERVICES",  # Services de réparations mécaniques
+        "1005": "SERVICES",  # Services de jardinerie & bricolage
+        "1006": "MAISON",  # Électroménager
+        "1007": "SERVICES",  # Services de réparations électroniques
+        "1008": "SERVICES",  # Artistes & Musiciens
+        "1009": "SERVICES",  # Billetterie
+        "1010": "SERVICES",  # Services aux animaux
+        "1011": "MODE",  # Vêtements enfants
+        "1012": "MODE",  # Vêtements maternité
+        "1013": "MODE",  # Chaussures enfants
+        "1014": "MODE",  # Montres & bijoux enfants
+        "1015": "MODE",  # Accessoires & bagagerie enfants
+        "1016": "LOISIRS",  # Jeux & Jouets
+        "1017": "SERVICES"  # Baby-Sitting
+    }
+    
+    # Real estate type mapping to subcategories
+    REAL_ESTATE_TYPE_MAP = {
+        "1": "IMMOBILIER_LOCATIONS",
+        "2": "IMMOBILIER_LOCATIONS",  # Houses for rent
+        "3": "IMMOBILIER_BUREAUX_ET_COMMERCES",
+        "4": "IMMOBILIER_COLOCATIONS",
+        "5": "IMMOBILIER_IMMOBILIER_NEUF"
+    }
     
     @staticmethod
-    def get_category(category_str: str) -> Any:
-        """Convert category string to lbc.Category enum."""
+    def parse_url_to_hybrid_args(url: str) -> tuple[str, list]:
+        """Parse URL to extract locations and return (url_without_locations, [locations])."""
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        
         try:
-            return getattr(lbc.Category, category_str.upper())
-        except AttributeError:
-            return lbc.Category.TOUTES_CATEGORIES
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            
+            locations = []
+            
+            # Parse locations only
+            if 'locations' in params:
+                location_str = params['locations'][0]
+                location = URLParser.parse_location(location_str)
+                if location:
+                    locations = [location]
+                
+                # Remove locations from URL parameters
+                del params['locations']
+            
+            # Rebuild URL without locations parameter
+            new_query = urlencode(params, doseq=True)
+            url_without_locations = urlunparse((
+                parsed.scheme, 
+                parsed.netloc, 
+                parsed.path, 
+                parsed.params, 
+                new_query, 
+                parsed.fragment
+            ))
+            
+            return url_without_locations, locations
+            
+        except Exception as e:
+            print(f"Error parsing URL: {e}")
+            return url, []
     
     @staticmethod
-    def get_sort(sort_str: str) -> Any:
-        """Convert sort string to lbc.Sort enum."""
+    def parse_url_to_search_args(url: str) -> dict:
+        """Parse URL and convert to search arguments for client.search()."""
+        from urllib.parse import urlparse, parse_qs
+        
         try:
-            return getattr(lbc.Sort, sort_str.upper())
-        except AttributeError:
-            return lbc.Sort.NEWEST
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            
+            search_args = {}
+            
+            # Parse category
+            if 'category' in params:
+                category_id = params['category'][0]
+                if category_id in URLParser.CATEGORY_MAP:
+                    search_args['category'] = getattr(lbc.Category, URLParser.CATEGORY_MAP[category_id])
+            
+            # Parse locations
+            if 'locations' in params:
+                location_str = params['locations'][0]
+                location = URLParser.parse_location(location_str)
+                if location:
+                    search_args['locations'] = [location]
+            
+            # Parse price range
+            if 'price' in params:
+                price_str = params['price'][0]
+                price_range = URLParser.parse_price_range(price_str)
+                if price_range:
+                    search_args['price'] = price_range
+            
+            # Parse rooms
+            if 'rooms' in params:
+                rooms_str = params['rooms'][0]
+                rooms_range = URLParser.parse_range(rooms_str)
+                if rooms_range:
+                    search_args['rooms'] = rooms_range
+            
+            # Parse bedrooms
+            if 'bedrooms' in params:
+                bedrooms_str = params['bedrooms'][0]
+                bedrooms_range = URLParser.parse_range(bedrooms_str)
+                if bedrooms_range:
+                    search_args['bedrooms'] = bedrooms_range
+            
+            # Parse real estate type (use subcategory instead)
+            if 'real_estate_type' in params:
+                real_estate_type_id = params['real_estate_type'][0]
+                if real_estate_type_id in URLParser.REAL_ESTATE_TYPE_MAP:
+                    search_args['category'] = getattr(lbc.Category, URLParser.REAL_ESTATE_TYPE_MAP[real_estate_type_id])
+            
+            # Parse text search
+            if 'text' in params:
+                search_args['text'] = params['text'][0]
+            
+            # Parse owner type
+            if 'owner_type' in params:
+                owner_type_str = params['owner_type'][0]
+                if owner_type_str == 'private':
+                    search_args['owner_type'] = lbc.OwnerType.PRIVATE
+                elif owner_type_str == 'pro':
+                    search_args['owner_type'] = lbc.OwnerType.PRO
+            
+            # Default values
+            search_args.setdefault('sort', lbc.Sort.NEWEST)
+            search_args.setdefault('ad_type', lbc.AdType.OFFER)
+            search_args.setdefault('limit', 35)
+            
+            return search_args
+            
+        except Exception as e:
+            print(f"Error parsing URL: {e}")
+            return {}
     
     @staticmethod
-    def get_ad_type(ad_type_str: str) -> Any:
-        """Convert ad type string to lbc.AdType enum."""
+    def parse_location(location_str: str) -> lbc.City:
+        """Parse location string to lbc.City object."""
         try:
-            return getattr(lbc.AdType, ad_type_str.upper())
-        except AttributeError:
-            return lbc.AdType.OFFER
-    
-    @staticmethod
-    def get_owner_type(owner_type_str: Optional[str]) -> Optional[Any]:
-        """Convert owner type string to lbc.OwnerType enum."""
-        if not owner_type_str:
+            # Handle formats like "Nanterre_92000__48.88822_2.19428_4049" or "Nanterre_92000__48.88822_2.19428_0"
+            if '__' in location_str:
+                parts = location_str.split('__')
+                city_part = parts[0]
+                coords_part = parts[1] if len(parts) > 1 else ""
+                
+                # Extract city name
+                city_parts = city_part.split('_')
+                if len(city_parts) >= 2 and city_parts[-1].isdigit():
+                    city_name = '_'.join(city_parts[:-1])
+                else:
+                    city_name = city_part
+                
+                # Extract coordinates
+                coords_parts = coords_part.split('_')
+                if len(coords_parts) >= 2:
+                    lat = float(coords_parts[0])
+                    lng = float(coords_parts[1])
+                    # Handle radius: preserve the exact radius value
+                    if len(coords_parts) > 2:
+                        radius = int(coords_parts[2])
+                        # Keep the exact radius value, even if it's 0
+                    else:
+                        radius = 10000  # Default radius when missing
+                    
+                    return lbc.City(
+                        lat=lat,
+                        lng=lng,
+                        radius=radius,
+                        city=city_name
+                    )
+            
+            # Handle simple format like "Nanterre_92000" (no coordinates, default radius = 0)
+            else:
+                city_name, postal_code = URLParser.extract_city_from_location(location_str)
+                coords = URLTransformer.get_city_coordinates(city_name, postal_code)
+                
+                return lbc.City(
+                    lat=coords['lat'],
+                    lng=coords['lng'],
+                    radius=0,  # Default radius = 0 when no coordinates provided
+                    city=city_name
+                )
+                
+        except Exception as e:
+            print(f"Error parsing location: {e}")
             return None
+    
+    @staticmethod
+    def extract_city_from_location(location: str) -> tuple[str, str]:
+        """Extract city name and postal code from location string."""
+        parts = location.split("_")
+        if len(parts) >= 2:
+            city_name = "_".join(parts[:-1])
+            postal_code = parts[-1]
+            return city_name, postal_code
+        return location, ""
+    
+    @staticmethod
+    def parse_price_range(price_str: str) -> list:
+        """Parse price range string to list."""
         try:
-            return getattr(lbc.OwnerType, owner_type_str.upper())
-        except AttributeError:
+            if price_str.startswith('min-'):
+                # Format: "min-1600"
+                max_price = int(price_str.split('-')[1])
+                return [0, max_price]
+            elif '-' in price_str:
+                # Format: "1000-2000"
+                parts = price_str.split('-')
+                min_price = int(parts[0])
+                max_price = int(parts[1])
+                return [min_price, max_price]
+            else:
+                # Single price
+                price = int(price_str)
+                return [price, price]
+        except:
             return None
+    
+    @staticmethod
+    def parse_range(range_str: str) -> tuple:
+        """Parse range string to tuple."""
+        try:
+            if '-' in range_str:
+                parts = range_str.split('-')
+                min_val = int(parts[0])
+                max_val = int(parts[1])
+                return (min_val, max_val)
+            else:
+                val = int(range_str)
+                return (val, val)
+        except:
+            return None
+
+
+# ============================================================================
+# URL TRANSFORMER
+# ============================================================================
+
+class URLTransformer:
+    """Transform Le Bon Coin URLs to the correct format with GPS coordinates."""
+    
+    # Base coordinates for major French cities
+    CITY_COORDINATES = {
+        "paris": {"lat": 48.8566, "lng": 2.3522, "postal": "75000"},
+        "lyon": {"lat": 45.7640, "lng": 4.8357, "postal": "69000"},
+        "marseille": {"lat": 43.2965, "lng": 5.3698, "postal": "13000"},
+        "toulouse": {"lat": 43.6047, "lng": 1.4442, "postal": "31000"},
+        "nice": {"lat": 43.7102, "lng": 7.2620, "postal": "06000"},
+        "nantes": {"lat": 47.2184, "lng": -1.5536, "postal": "44000"},
+        "strasbourg": {"lat": 48.5734, "lng": 7.7521, "postal": "67000"},
+        "montpellier": {"lat": 43.6110, "lng": 3.8767, "postal": "34000"},
+        "bordeaux": {"lat": 44.8378, "lng": -0.5792, "postal": "33000"},
+        "lille": {"lat": 50.6292, "lng": 3.0573, "postal": "59000"},
+        "rennes": {"lat": 48.1173, "lng": -1.6778, "postal": "35000"},
+        "reims": {"lat": 49.2583, "lng": 4.0317, "postal": "51100"},
+        "saint_etienne": {"lat": 45.09, "lng": 4.39, "postal": "42000"},
+        "toulon": {"lat": 43.1242, "lng": 5.9280, "postal": "83000"},
+        "le_havre": {"lat": 49.4944, "lng": 0.1079, "postal": "76600"},
+        "grenoble": {"lat": 45.1885, "lng": 5.7245, "postal": "38000"},
+        "dijon": {"lat": 47.3220, "lng": 5.0415, "postal": "21000"},
+        "angers": {"lat": 47.4784, "lng": -0.5632, "postal": "49000"},
+        "nimes": {"lat": 43.8367, "lng": 4.3601, "postal": "30000"},
+        "villeurbanne": {"lat": 45.7667, "lng": 4.8833, "postal": "69100"},
+        "saint_denis": {"lat": 48.9361, "lng": 2.3574, "postal": "93200"},
+        "le_mans": {"lat": 48.0061, "lng": 0.1996, "postal": "72000"},
+        "aix_en_provence": {"lat": 43.5263, "lng": 5.4454, "postal": "13100"},
+        "clermont_ferrand": {"lat": 45.7772, "lng": 3.0870, "postal": "63000"},
+        "brest": {"lat": 48.3905, "lng": -4.4860, "postal": "29200"},
+        "tours": {"lat": 47.3941, "lng": 0.6848, "postal": "37000"},
+        "limoges": {"lat": 45.8336, "lng": 1.2611, "postal": "87000"},
+        "amiens": {"lat": 49.8943, "lng": 2.2958, "postal": "80000"},
+        "perpignan": {"lat": 42.6886, "lng": 2.8948, "postal": "66000"},
+        "metz": {"lat": 49.1193, "lng": 6.1757, "postal": "57000"},
+        "nanterre": {"lat": 48.8938, "lng": 2.2064, "postal": "92000"},
+        "boulogne_billancourt": {"lat": 48.8355, "lng": 2.2413, "postal": "92100"},
+        "orleans": {"lat": 47.9029, "lng": 1.9093, "postal": "45000"},
+        "mulhouse": {"lat": 47.7508, "lng": 7.3359, "postal": "68100"},
+        "rouen": {"lat": 49.4432, "lng": 1.0993, "postal": "76000"},
+        "caen": {"lat": 49.1829, "lng": -0.3707, "postal": "14000"},
+        "dunkerque": {"lat": 51.0343, "lng": 2.3768, "postal": "59140"},
+        "nancy": {"lat": 48.6921, "lng": 6.1844, "postal": "54000"},
+        "saint_pierre": {"lat": 46.7753, "lng": -56.1773, "postal": "97500"},
+        "reunion": {"lat": -21.1151, "lng": 55.5364, "postal": "97400"},
+        "antilles": {"lat": 14.6415, "lng": -61.0242, "postal": "97200"},
+        "nouvelle_caledonie": {"lat": -22.2758, "lng": 166.4581, "postal": "98800"},
+        "polynesie": {"lat": -17.6797, "lng": -149.4068, "postal": "98700"},
+    }
+    
+    @staticmethod
+    def normalize_city_name(city_name: str) -> str:
+        """Normalize city name for lookup."""
+        return city_name.lower().replace(" ", "_").replace("-", "_")
+    
+    @staticmethod
+    def extract_city_from_location(location: str) -> tuple[str, str]:
+        """Extract city name and postal code from location string."""
+        # Handle formats like "Nanterre_92000", "Paris_75000", etc.
+        parts = location.split("_")
+        if len(parts) >= 2:
+            city_name = "_".join(parts[:-1])  # Everything except last part
+            postal_code = parts[-1]  # Last part
+            return city_name, postal_code
+        return location, ""
+    
+    @staticmethod
+    def get_city_coordinates(city_name: str, postal_code: str = "") -> dict:
+        """Get coordinates for a city."""
+        normalized_name = URLTransformer.normalize_city_name(city_name)
+        
+        # Try exact match first
+        if normalized_name in URLTransformer.CITY_COORDINATES:
+            return URLTransformer.CITY_COORDINATES[normalized_name]
+        
+        # Try partial matches
+        for city_key, coords in URLTransformer.CITY_COORDINATES.items():
+            if normalized_name in city_key or city_key in normalized_name:
+                return coords
+        
+        # Default to Paris if not found
+        return URLTransformer.CITY_COORDINATES["paris"]
+    
+    @staticmethod
+    def transform_url(url: str) -> str:
+        """Transform a Le Bon Coin URL to the correct format with all filters preserved."""
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        
+        try:
+            # Parse URL
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            
+            # Transform locations parameter
+            if 'locations' in params:
+                locations = params['locations'][0]
+                
+                # Normalize the location format
+                normalized_location = URLTransformer.normalize_location_format(locations)
+                
+                # Update params with normalized location
+                params['locations'] = [normalized_location]
+                
+                # Rebuild URL with all parameters preserved
+                new_query = urlencode(params, doseq=True)
+                new_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+                
+                return new_url
+            
+            return url
+            
+        except Exception as e:
+            # If transformation fails, return original URL
+            return url
+    
+    @staticmethod
+    def normalize_location_format(location: str) -> str:
+        """Normalize location format to the correct GPS format."""
+        # Handle various formats:
+        # 1. "Nanterre_92000" -> convert to GPS format
+        # 2. "Nanterre_92000__48.88822_2.19428_4049" -> fix format but preserve GPS coordinates
+        # 3. "Nanterre__48.88822_2.19428_92000_10000" -> already correct
+        
+        # Check if location already has GPS coordinates
+        if '__' in location:
+            parts = location.split('__')
+            city_part = parts[0]
+            coords_part = parts[1] if len(parts) > 1 else ""
+            
+            # Check if coords_part contains GPS coordinates (lat_lng format)
+            coords_parts = coords_part.split('_')
+            if len(coords_parts) >= 2:
+                try:
+                    # Try to parse as coordinates
+                    lat = float(coords_parts[0])
+                    lng = float(coords_parts[1])
+                    
+                    # If we have valid coordinates, preserve them
+                    if -90 <= lat <= 90 and -180 <= lng <= 180:
+                        # Extract city name from city_part
+                        city_parts = city_part.split('_')
+                        if len(city_parts) >= 2 and city_parts[-1].isdigit():
+                            # Last part is postal code
+                            city_name = '_'.join(city_parts[:-1])
+                            postal_code = city_parts[-1]
+                        else:
+                            # No postal code in city part
+                            city_name = city_part
+                            postal_code = ""
+                        
+                        # Use existing coordinates, postal code, and radius if available
+                        if len(coords_parts) >= 3:
+                            # Try to use original radius
+                            try:
+                                radius = int(coords_parts[2])
+                                # For the API lbc, we need to use the postal code from the original city part
+                                # The format should be: City__lat_lng_postal_radius
+                                normalized_location = f"{city_name}__{lat}_{lng}_{postal_code}_{radius}"
+                            except ValueError:
+                                normalized_location = f"{city_name}__{lat}_{lng}_{postal_code}_10000"
+                        else:
+                            normalized_location = f"{city_name}__{lat}_{lng}_{postal_code}_10000"
+                        return normalized_location
+                except ValueError:
+                    pass  # Not valid coordinates, fall through to default handling
+        
+        # No valid GPS coordinates found, extract city and postal code
+        if '__' in location:
+            city_part = location.split('__')[0]
+            city_name, postal_code = URLTransformer.extract_city_from_location(city_part)
+        else:
+            city_name, postal_code = URLTransformer.extract_city_from_location(location)
+        
+        # Get coordinates for the city
+        coords = URLTransformer.get_city_coordinates(city_name, postal_code)
+        
+        # Build correct format: City__lat_lng_postal_radius
+        normalized_location = f"{city_name}__{coords['lat']}_{coords['lng']}_{coords['postal']}_10000"
+        
+        return normalized_location
 
 
 # ============================================================================
@@ -177,40 +712,6 @@ class EnumMapper:
 class DataProcessor:
     """Process and transform ad data."""
     
-    @staticmethod
-    def serialize_to_dict(obj: Any) -> Any:
-        """Recursively convert dataclass objects to dictionaries."""
-        if is_dataclass(obj):
-            result = {}
-            for field in fields(obj):
-                if field.name.startswith('_'):
-                    continue
-                value = getattr(obj, field.name)
-                result[field.name] = DataProcessor.serialize_to_dict(value)
-            return result
-        elif isinstance(obj, list):
-            return [DataProcessor.serialize_to_dict(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {k: DataProcessor.serialize_to_dict(v) for k, v in obj.items()}
-        else:
-            return obj
-    
-    @staticmethod
-    def extract_attribute_value(attributes: list, key: str) -> Optional[str]:
-        """Extract attribute value by key."""
-        for attr in attributes:
-            if hasattr(attr, 'key') and attr.key == key:
-                return attr.value
-        return None
-    
-    @staticmethod
-    def extract_all_attributes(attributes: list) -> Dict[str, str]:
-        """Extract all attributes as dictionary."""
-        result = {}
-        for attr in attributes:
-            if hasattr(attr, 'key') and hasattr(attr, 'value'):
-                result[attr.key] = attr.value
-        return result
     
     @staticmethod
     def normalize_datetime(date_string: Optional[str]) -> Optional[str]:
@@ -313,23 +814,6 @@ class AdTransformer:
         
         return ad_data
     
-    @staticmethod
-    def create_compact_ad(ad: Any, search_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Create compact ad dictionary with essential fields only."""
-        location = ad.location if hasattr(ad, 'location') else None
-        
-        return {
-            "id": ad.id if hasattr(ad, 'id') else None,
-            "url": ad.url if hasattr(ad, 'url') else None,
-            "subject": ad.subject if hasattr(ad, 'subject') else None,
-            "price": ad.price if hasattr(ad, 'price') else None,
-            "city": location.city if location else None,
-            "zipcode": location.zipcode if location else None,
-            "index_date": DataProcessor.normalize_datetime(
-                ad.index_date if hasattr(ad, 'index_date') else None
-            ),
-            "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
 
 
 # ============================================================================
@@ -388,210 +872,10 @@ class ScraperEngine:
             self.client = lbc.Client()
             self.logger.info("Leboncoin client initialized without proxy")
     
-    def build_search_params(self, location: Any = None) -> Dict[str, Any]:
-        """Build search parameters for API call."""
-        # If location is a string (department format like "d_01"), build URL instead
-        if isinstance(location, str):
-            return None  # Signal to use URL-based search
-        
-        params = {
-            "category": EnumMapper.get_category(self.config.category),
-            "sort": EnumMapper.get_sort(self.config.sort),
-            "ad_type": EnumMapper.get_ad_type(self.config.ad_type),
-            "limit": self.config.limit_per_page,
-            "search_in_title_only": self.config.search_in_title_only,
-        }
-        
-        # Add text search
-        if self.config.search_text:
-            params["text"] = self.config.search_text
-        
-        # Add location (only for City or Region objects)
-        if location:
-            params["locations"] = [location]
-        
-        # Add owner type
-        owner_type_str = self.config.owner_type
-        if owner_type_str and owner_type_str != "all":
-            owner_type = EnumMapper.get_owner_type(owner_type_str)
-        if owner_type:
-            params["owner_type"] = owner_type
-        
-        # Add price range
-        if self.config.price_min is not None or self.config.price_max is not None:
-            price_range = []
-            if self.config.price_min is not None:
-                price_range.append(self.config.price_min)
-            if self.config.price_max is not None:
-                if not price_range:
-                    price_range.append(0)
-                price_range.append(self.config.price_max)
-            if len(price_range) == 2:
-                params["price"] = price_range
-        
-        # Add custom filters
-        params.update(self.config.filters)
-        
-        return params
-    
-    def build_search_url(self, location: str) -> str:
-        """Build search URL for department-based search."""
-        # Get category ID
-        category = EnumMapper.get_category(self.config.category)
-        category_id = category.value if hasattr(category, 'value') else "0"
-        
-        # Base URL
-        url_parts = [f"https://www.leboncoin.fr/recherche?category={category_id}"]
-        
-        # Add location
-        url_parts.append(f"locations={location}")
-        
-        # Add text search
-        if self.config.search_text:
-            url_parts.append(f"text={self.config.search_text}")
-        
-        # Add price
-        if self.config.price_min is not None or self.config.price_max is not None:
-            price_min = self.config.price_min or 0
-            price_max = self.config.price_max or "max"
-            url_parts.append(f"price={price_min}-{price_max}")
-        
-        # Add custom filters as URL parameters
-        for key, value in self.config.filters.items():
-            if isinstance(value, list):
-                if all(isinstance(v, (int, float)) for v in value) and len(value) == 2:
-                    # Range filter
-                    url_parts.append(f"{key}={value[0]}-{value[1]}")
-                else:
-                    # List filter
-                    url_parts.append(f"{key}={','.join(str(v) for v in value)}")
-            else:
-                url_parts.append(f"{key}={value}")
-        
-        return "&".join(url_parts)
-    
-    async def scrape_location(self, location: Any, location_name: str) -> List[Dict[str, Any]]:
-        """Scrape all ads for a specific location."""
-        self.logger.info(f"Starting scrape for location: {location_name}")
-        
-        # Determine if we need URL-based search (for departments) or params-based
-        search_params = self.build_search_params(location)
-        use_url = (search_params is None)  # URL is needed for departments
-        
-        if use_url and isinstance(location, str):
-            search_url = self.build_search_url(location)
-            self.logger.info(f"Using URL-based search for department")
-        
-        search_context = {
-            "category": self.config.category,
-            "location": location_name
-        }
-        
-        all_ads = []
-        page = 1
-        total_pages = None
-        old_ads_count = 0
-        
-        while True:
-            try:
-                self.logger.info(f"Fetching page {page}{f'/{total_pages}' if total_pages else ''}")
-                
-                # Search using URL or params
-                if use_url:
-                    result = self.client.search(url=search_url, page=page, limit=self.config.limit_per_page)
-                else:
-                    result = self.client.search(**search_params, page=page)
-                
-                # Normalize iterator result
-                ads_iter = getattr(result, 'ads', None)
-                if ads_iter is None:
-                    # Some versions return an iterator directly
-                    ads_iter = result
-                
-                if page == 1:
-                    total_pages = getattr(result, 'max_pages', None)
-                    total_results = getattr(result, 'total', None) or 0
-                    self.logger.info(f"Found {total_results} ads across {total_pages or '?'} pages")
-
-                # Collect ads for this page
-                page_ads = 0
-                had_any = False
-                for ad in ads_iter:
-                    had_any = True
-                    # Fast validation
-                    if not hasattr(ad, 'id') or isinstance(ad, str):
-                        continue
-                    
-                    # Create ad data
-                    if self.config.output_format == "detailed":
-                        ad_data = AdTransformer.create_detailed_ad(ad, search_context)
-                    else:
-                        ad_data = AdTransformer.create_compact_ad(ad, search_context)
-                    
-                    # Check duplicates
-                    ad_id = ad_data.get("id")
-                    if ad_id in self.seen_ids:
-                        self.stats["duplicates"] += 1
-                        continue
-                    
-                    # Age filter
-                    if DataProcessor.is_ad_too_old(
-                        ad_data.get("index_date"),
-                        self.config.max_age_days
-                    ):
-                        old_ads_count += 1
-                        if old_ads_count >= self.config.consecutive_old_limit:
-                            self.logger.info(f"Age cutoff reached")
-                            return all_ads
-                    else:
-                        old_ads_count = 0
-                    
-                    # Add ad
-                    try:
-                        self.seen_ids.add(ad_id)
-                        all_ads.append(ad_data)
-                        page_ads += 1
-                        self.stats["total_ads"] += 1
-                        self.stats["unique_ads"] += 1
-                        
-                        # Push to Apify dataset
-                        await ApifyAdapter.push_data(ad_data)
-                    except Exception:
-                        self.stats["errors"] += 1
-                
-                if not had_any:
-                    break
-
-                # Log every 5 pages to reduce overhead
-                if page % 5 == 1:
-                    self.logger.info(f"Page {page}: {page_ads} ads extracted")
-                self.stats["pages_processed"] += 1
-                
-                # Check pagination limits
-                if self.config.max_pages > 0 and page >= self.config.max_pages:
-                    self.logger.info(f"Max pages limit reached ({self.config.max_pages})")
-                    break
-                
-                if total_pages and page >= total_pages:
-                    self.logger.info(f"Reached last page")
-                    break
-                
-                page += 1
-                # Only sleep if delay configured
-                if self.config.delay_between_pages > 0:
-                    await asyncio.sleep(self.config.delay_between_pages)
-                
-            except Exception as e:
-                self.logger.error(f"Error fetching page {page}: {e}")
-                self.stats["errors"] += 1
-                break
-        
-        self.logger.info(f"Completed location {location_name}: {len(all_ads)} ads extracted")
-        return all_ads
     
     def _scrape_single_page(self, page_num: int) -> tuple[List[Dict[str, Any]], bool]:
         """
-        Scrape a single page sequentially (optimized for speed).
+        Scrape a single page using parsed search arguments.
         Returns (ads_list, should_stop).
         
         Args:
@@ -601,19 +885,19 @@ class ScraperEngine:
             Tuple of (list of ads, boolean indicating if scraping should stop)
         """
         try:
-            # Use URL directly - let lbc library handle the parsing
-            result = self.client.search(
-                url=self.config.direct_url,
-                page=page_num,
-                limit=self.config.limit_per_page
-            )
+            # Use parsed search arguments instead of URL
+            search_args = self.config.search_args.copy()
+            search_args['page'] = page_num
+            search_args['limit'] = self.config.limit_per_page
+            
+            result = self.client.search(**search_args)
             
             # Log info on first page only
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
                 self.logger.info(f"Found {result.total} ads in {result.max_pages} pages")
             
             # Fast exit if no ads
-            if not result.ads:
+            if not hasattr(result, 'ads') or not result.ads:
                 return [], True
             
             page_ads = []
@@ -665,29 +949,18 @@ class ScraperEngine:
             return [], True
 
     async def scrape_from_url(self) -> List[Dict[str, Any]]:
-        """Scrape from a direct Leboncoin URL (sequential, optimized for speed)."""
+        """Scrape using search arguments (sequential, optimized for speed)."""
         all_ads = []
         
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
         
-        # Validate URL
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(self.config.direct_url)
-            
-            if not parsed.scheme.startswith("http"):
-                raise ValueError("URL invalide: doit commencer par http/https")
-            if not parsed.netloc.endswith("leboncoin.fr"):
-                raise ValueError("URL invalide: domaine non supporté (leboncoin.fr attendu)")
-            if "/recherche" not in parsed.path:
-                raise ValueError("URL non supportée: utilisez une URL de recherche (contenant /recherche)")
-            
-            self.logger.info("URL validated - will be passed directly to lbc library")
-            
-        except Exception as e:
-            self.logger.error(f"URL validation failed: {e}")
+        # Validate search arguments
+        if not self.config.search_args:
+            self.logger.error("No search arguments provided")
             self.stats["errors"] += 1
             return all_ads
+        
+        self.logger.info("Search arguments validated - will be passed directly to lbc library")
 
         # Sequential scraping - optimized batching
         page = 1
@@ -733,15 +1006,18 @@ class ScraperEngine:
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
-        """Execute URL scraping pipeline."""
+        """Execute scraping pipeline."""
         self.logger.info("Starting scraper")
-        self.logger.info(f"URL: {self.config.direct_url}")
+        if self.config.direct_url:
+            self.logger.info(f"URL: {self.config.direct_url}")
+        else:
+            self.logger.info(f"Search args: {self.config.search_args}")
         self.logger.info(f"Max pages: {self.config.max_pages}, Delay: {self.config.delay_between_pages}s")
         
         # Initialize client
         await self.initialize_client()
         
-        # Scrape from URL
+        # Scrape using search arguments
         all_ads = await self.scrape_from_url()
         
         # Final summary
@@ -753,22 +1029,6 @@ class ScraperEngine:
             "config": self.config.to_dict()
         }
     
-    def _get_location_name(self, location: Any, index: int) -> str:
-        """Get readable name for location."""
-        if location is None:
-            return "Global"
-        
-        # Handle string locations (departments like "d_01")
-        if isinstance(location, str):
-            return f"Department {location}"
-        
-        if hasattr(location, 'city'):
-            return location.city
-        
-        if hasattr(location, 'value'):
-            return location.value[1] if isinstance(location.value, tuple) else str(location.value)
-        
-        return f"Location {index}"
 
 
 # ============================================================================
