@@ -158,10 +158,6 @@ class LeboncoinURLParser:
     }
     
     SORT_MAP = {
-        "time": lbc.Sort.NEWEST,
-        "price": lbc.Sort.CHEAPEST,
-        "price_asc": lbc.Sort.EXPENSIVE,
-        "price_desc": lbc.Sort.CHEAPEST,
         "relevance": lbc.Sort.RELEVANCE
     }
     
@@ -227,17 +223,12 @@ class LeboncoinURLParser:
                         search_config['owner_type'] = LeboncoinURLParser.OWNER_TYPE_MAP[value]
                         
                 elif key == "sort":
-                    if value in LeboncoinURLParser.SORT_MAP:
-                        search_config['sort'] = LeboncoinURLParser.SORT_MAP[value]
+                    # Store sort parameter for later processing with order
+                    search_config['_sort_value'] = value
                         
                 elif key == "order":
-                    # Handle sort order
-                    if value == "desc":
-                        if 'sort' in search_config and search_config['sort'] == lbc.Sort.EXPENSIVE:
-                            search_config['sort'] = lbc.Sort.CHEAPEST
-                    elif value == "asc":
-                        if 'sort' in search_config and search_config['sort'] == lbc.Sort.CHEAPEST:
-                            search_config['sort'] = lbc.Sort.EXPENSIVE
+                    # Store order parameter for later processing with sort
+                    search_config['_order_value'] = value
                             
                 elif key == "ad_type":
                     if value in LeboncoinURLParser.AD_TYPE_MAP:
@@ -270,8 +261,11 @@ class LeboncoinURLParser:
             if kwargs_filters:
                 search_config.update(kwargs_filters)
             
+            # Process sort and order parameters
+            LeboncoinURLParser._process_sort_and_order(search_config)
+            
             # Set default values
-            search_config.setdefault('sort', lbc.Sort.NEWEST)
+            search_config.setdefault('sort', lbc.Sort.RELEVANCE)  # Default to relevance
             search_config.setdefault('ad_type', lbc.AdType.OFFER)
             search_config.setdefault('limit', 35)
             
@@ -434,6 +428,32 @@ class LeboncoinURLParser:
         except Exception as e:
             print(f"Error with Nominatim fallback: {e}")
             return {"lat": 48.8566, "lng": 2.3522}
+    
+    @staticmethod
+    def _process_sort_and_order(search_config: Dict[str, Any]) -> None:
+        """Process sort and order parameters according to Leboncoin URL patterns."""
+        sort_value = search_config.pop('_sort_value', None)
+        order_value = search_config.pop('_order_value', None)
+        
+        if sort_value and order_value:
+            # Handle specific combinations
+            if sort_value == "time" and order_value == "desc":
+                search_config['sort'] = lbc.Sort.NEWEST
+            elif sort_value == "time" and order_value == "asc":
+                search_config['sort'] = lbc.Sort.OLDEST
+            elif sort_value == "price" and order_value == "desc":
+                search_config['sort'] = lbc.Sort.EXPENSIVE
+            elif sort_value == "price" and order_value == "asc":
+                search_config['sort'] = lbc.Sort.CHEAPEST
+            else:
+                # Fallback to default mapping
+                if sort_value in LeboncoinURLParser.SORT_MAP:
+                    search_config['sort'] = LeboncoinURLParser.SORT_MAP[sort_value]
+        elif sort_value:
+            # Only sort parameter provided
+            if sort_value in LeboncoinURLParser.SORT_MAP:
+                search_config['sort'] = LeboncoinURLParser.SORT_MAP[sort_value]
+        # If no sort/order parameters, default to RELEVANCE (set later)
     
     @staticmethod
     def _parse_generic_value(value: str) -> Any:
