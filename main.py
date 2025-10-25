@@ -1010,6 +1010,9 @@ class ScraperEngine:
         self.logger.info("Starting scraper")
         if self.config.direct_url:
             self.logger.info(f"URL: {self.config.direct_url}")
+            # Log parsed search arguments
+            if self.config.search_args:
+                self.logger.info(f"Parsed search arguments: {self.config.search_args}")
         else:
             self.logger.info(f"Search args: {self.config.search_args}")
         self.logger.info(f"Max pages: {self.config.max_pages}, Delay: {self.config.delay_between_pages}s")
