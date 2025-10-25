@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import asyncio
-from dataclasses import fields, is_dataclass
 from typing import Any, Optional, Dict, List
 from datetime import datetime, timedelta
 
@@ -77,8 +76,7 @@ class Config:
             # URL scraping mode - parse URL to search args
             raw_url = input_data.get("direct_url", "").strip()
             self.direct_url = raw_url
-            from url_parsing import parse_leboncoin_url
-            self.search_args = parse_leboncoin_url(raw_url)
+            self.search_args = LeboncoinURLParser.parse_url_to_search_config(raw_url)
             
             # Log parsed search arguments
             if self.search_args:
@@ -147,285 +145,162 @@ class Logger:
 # URL PARSER
 # ============================================================================
 
-class URLParser:
-    """Parse Le Bon Coin URLs and convert to search arguments."""
+class LeboncoinURLParser:
+    """Generic parser for Leboncoin search URLs to search configuration."""
     
-    # Category mapping from URL to lbc.Category (based on real fdata.json)
-    CATEGORY_MAP = {
-        # Toutes catégories
-        "0": "ALL",
-        
-        # Emploi
-        "71": "EMPLOI",
-        "33": "EMPLOI",  # Offres d'emploi
-        "74": "EMPLOI",  # Formations professionnelles
-        
-        # Véhicules
-        "1": "VEHICULES",
-        "2": "VEHICULES",  # Voitures
-        "3": "VEHICULES",  # Motos
-        "4": "VEHICULES",  # Caravaning
-        "5": "VEHICULES",  # Utilitaires
-        "300": "VEHICULES",  # Camions
-        "7": "VEHICULES",  # Nautisme
-        "6": "VEHICULES",  # Équipement auto
-        "44": "VEHICULES",  # Équipement moto
-        "50": "VEHICULES",  # Équipement caravaning
-        "51": "VEHICULES",  # Équipement nautisme
-        
-        # Immobilier
-        "8": "IMMOBILIER",
-        "9": "IMMOBILIER",  # Ventes immobilières
-        "2001": "IMMOBILIER",  # Immobilier Neuf
-        "10": "IMMOBILIER",  # Locations
-        "11": "IMMOBILIER",  # Colocations
-        "13": "IMMOBILIER",  # Bureaux & Commerces
-        
-        # Locations de vacances
-        "66": "VACANCES",
-        "12": "VACANCES",  # Locations saisonnières
-        
-        # Électronique
-        "14": "MULTIMEDIA",
-        "15": "MULTIMEDIA",  # Ordinateurs
-        "83": "MULTIMEDIA",  # Accessoires informatique
-        "82": "MULTIMEDIA",  # Tablettes & Liseuses
-        "16": "MULTIMEDIA",  # Photo, audio & vidéo
-        "17": "MULTIMEDIA",  # Téléphones & Objets connectés
-        "81": "MULTIMEDIA",  # Accessoires téléphone & Objets connectés
-        "43": "MULTIMEDIA",  # Consoles
-        "84": "MULTIMEDIA",  # Jeux vidéo
-        
-        # Maison & Jardin
-        "18": "MAISON",
-        "19": "MAISON",  # Ameublement
-        "96": "MAISON",  # Papeterie & Fournitures scolaires
-        "20": "MAISON",  # Électroménager
-        "45": "MAISON",  # Arts de la table
-        "39": "MAISON",  # Décoration
-        "46": "MAISON",  # Linge de maison
-        "21": "MAISON",  # Bricolage
-        "52": "MAISON",  # Jardin & Plantes
-        
-        # Famille
-        "79": "FAMILLE",
-        "23": "FAMILLE",  # Équipement bébé
-        "80": "FAMILLE",  # Mobilier enfant
-        "54": "FAMILLE",  # Vêtements bébé
-        
-        # Mode
-        "72": "MODE",
-        "22": "MODE",  # Vêtements
-        "53": "MODE",  # Chaussures
-        "47": "MODE",  # Accessoires & Bagagerie
-        "42": "MODE",  # Montres & Bijoux
-        
-        # Loisirs
-        "24": "LOISIRS",
-        "89": "LOISIRS",  # Antiquités
-        "40": "LOISIRS",  # Collection
-        "26": "LOISIRS",  # CD - Musique
-        "25": "LOISIRS",  # DVD - Films
-        "30": "LOISIRS",  # Instruments de musique
-        "27": "LOISIRS",  # Livres
-        "86": "LOISIRS",  # Modélisme
-        "48": "LOISIRS",  # Vins & Gastronomie
-        "41": "LOISIRS",  # Jeux & Jouets
-        "88": "LOISIRS",  # Loisirs créatifs
-        "29": "LOISIRS",  # Sport & Plein air
-        "55": "LOISIRS",  # Vélos
-        "85": "LOISIRS",  # Équipements vélos
-        "1002": "LOISIRS",  # Vélos (autre ID)
-        "1003": "LOISIRS",  # Équipements vélos (autre ID)
-        
-        # Animaux
-        "75": "ANIMAUX",
-        "28": "ANIMAUX",  # Animaux
-        "76": "ANIMAUX",  # Accessoires animaux
-        "77": "ANIMAUX",  # Animaux perdus
-        
-        # Matériel professionnel
-        "56": "MATERIEL_PROFESSIONNEL",
-        "105": "MATERIEL_PROFESSIONNEL",  # Tracteurs
-        "57": "MATERIEL_PROFESSIONNEL",  # Matériel agricole
-        "59": "MATERIEL_PROFESSIONNEL",  # BTP - Chantier gros-oeuvre
-        "106": "MATERIEL_PROFESSIONNEL",  # Poids lourds
-        "58": "MATERIEL_PROFESSIONNEL",  # Manutention - Levage
-        "32": "MATERIEL_PROFESSIONNEL",  # Équipements industriels
-        "61": "MATERIEL_PROFESSIONNEL",  # Équipements pour restaurants & hôtels
-        "62": "MATERIEL_PROFESSIONNEL",  # Équipements & Fournitures de bureau
-        "63": "MATERIEL_PROFESSIONNEL",  # Équipements pour commerces & marchés
-        "64": "MATERIEL_PROFESSIONNEL",  # Matériel médical
-        
-        # Services
-        "31": "SERVICES",
-        "101": "SERVICES",  # Artistes & Musiciens
-        "100": "SERVICES",  # Baby-Sitting
-        "35": "SERVICES",  # Billetterie
-        "65": "SERVICES",  # Covoiturage
-        "36": "SERVICES",  # Cours particuliers
-        "103": "SERVICES",  # Entraide entre voisins
-        "49": "SERVICES",  # Évènements
-        "99": "SERVICES",  # Services à la personne
-        "102": "SERVICES",  # Services aux animaux
-        "92": "SERVICES",  # Services de déménagement
-        "95": "SERVICES",  # Services de réparations électroniques
-        "93": "SERVICES",  # Services de réparations mécaniques
-        "97": "SERVICES",  # Services de jardinerie & bricolage
-        "98": "SERVICES",  # Services évènementiels
-        "34": "SERVICES",  # Autres services
-        
-        # Dons
-        "1000": "DONS",
-        
-        # Divers
-        "37": "DIVERS",
-        "38": "DIVERS",  # Autres
-        
-        # Services spécialisés (mappés vers SERVICES)
-        "1001": "SERVICES",  # Services de déménagement
-        "1004": "SERVICES",  # Services de réparations mécaniques
-        "1005": "SERVICES",  # Services de jardinerie & bricolage
-        "1006": "MAISON",  # Électroménager
-        "1007": "SERVICES",  # Services de réparations électroniques
-        "1008": "SERVICES",  # Artistes & Musiciens
-        "1009": "SERVICES",  # Billetterie
-        "1010": "SERVICES",  # Services aux animaux
-        "1011": "MODE",  # Vêtements enfants
-        "1012": "MODE",  # Vêtements maternité
-        "1013": "MODE",  # Chaussures enfants
-        "1014": "MODE",  # Montres & bijoux enfants
-        "1015": "MODE",  # Accessoires & bagagerie enfants
-        "1016": "LOISIRS",  # Jeux & Jouets
-        "1017": "SERVICES"  # Baby-Sitting
+    # Extract category mapping from lbc.Category enum
+    CATEGORY_MAP = {cat.value: cat for cat in lbc.Category}
+    
+    # Only fundamental mappings for core parameters
+    OWNER_TYPE_MAP = {
+        "private": lbc.OwnerType.PRIVATE,
+        "pro": lbc.OwnerType.PRO
     }
     
-    # Real estate type mapping to subcategories
-    REAL_ESTATE_TYPE_MAP = {
-        "1": "IMMOBILIER_LOCATIONS",
-        "2": "IMMOBILIER_LOCATIONS",  # Houses for rent
-        "3": "IMMOBILIER_BUREAUX_ET_COMMERCES",
-        "4": "IMMOBILIER_COLOCATIONS",
-        "5": "IMMOBILIER_IMMOBILIER_NEUF"
+    SORT_MAP = {
+        "time": lbc.Sort.NEWEST,
+        "price": lbc.Sort.CHEAPEST,
+        "price_asc": lbc.Sort.EXPENSIVE,
+        "price_desc": lbc.Sort.CHEAPEST,
+        "relevance": lbc.Sort.RELEVANCE
+    }
+    
+    AD_TYPE_MAP = {
+        "offer": lbc.AdType.OFFER,
+        "demand": lbc.AdType.DEMAND
     }
     
     @staticmethod
-    def parse_url_to_hybrid_args(url: str) -> tuple[str, list]:
-        """Parse URL to extract locations and return (url_without_locations, [locations])."""
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    def parse_url_to_search_config(url: str) -> Dict[str, Any]:
+        """
+        Parse a Leboncoin search URL and convert it to a search configuration dictionary.
+        This parser is truly generic and handles ALL possible URL parameters.
         
+        Args:
+            url: Leboncoin search URL
+            
+        Returns:
+            Dictionary containing search configuration compatible with lbc.Client.search()
+        """
         try:
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
+            from urllib.parse import unquote
             
-            locations = []
+            # Extract query string and split by &
+            if '?' not in url:
+                return {}
             
-            # Parse locations only
-            if 'locations' in params:
-                location_str = params['locations'][0]
-                location = URLParser.parse_location(location_str)
-                if location:
-                    locations = [location]
+            query_string = url.split('?')[1]
+            args = query_string.split('&')
+            
+            search_config = {}
+            kwargs_filters = {}
+            
+            for arg in args:
+                if '=' not in arg:
+                    continue
+                    
+                key, value = arg.split('=', 1)
+                value = unquote(value)
                 
-                # Remove locations from URL parameters
-                del params['locations']
+                # Parse each parameter
+                if key == "text":
+                    search_config['text'] = value
+                    
+                elif key == "category":
+                    try:
+                        category_id = str(value)  # Convert to string for mapping lookup
+                        if category_id in LeboncoinURLParser.CATEGORY_MAP:
+                            search_config['category'] = LeboncoinURLParser.CATEGORY_MAP[category_id]
+                        else:
+                            # Fallback to TOUTES_CATEGORIES if not found
+                            search_config['category'] = lbc.Category.TOUTES_CATEGORIES
+                    except ValueError:
+                        pass
+                        
+                elif key == "locations":
+                    locations = LeboncoinURLParser._parse_locations(value)
+                    if locations:
+                        search_config['locations'] = locations
+                        
+                elif key == "owner_type":
+                    if value in LeboncoinURLParser.OWNER_TYPE_MAP:
+                        search_config['owner_type'] = LeboncoinURLParser.OWNER_TYPE_MAP[value]
+                        
+                elif key == "sort":
+                    if value in LeboncoinURLParser.SORT_MAP:
+                        search_config['sort'] = LeboncoinURLParser.SORT_MAP[value]
+                        
+                elif key == "order":
+                    # Handle sort order
+                    if value == "desc":
+                        if 'sort' in search_config and search_config['sort'] == lbc.Sort.EXPENSIVE:
+                            search_config['sort'] = lbc.Sort.CHEAPEST
+                    elif value == "asc":
+                        if 'sort' in search_config and search_config['sort'] == lbc.Sort.CHEAPEST:
+                            search_config['sort'] = lbc.Sort.EXPENSIVE
+                            
+                elif key == "ad_type":
+                    if value in LeboncoinURLParser.AD_TYPE_MAP:
+                        search_config['ad_type'] = LeboncoinURLParser.AD_TYPE_MAP[value]
+                        
+                elif key == "shippable":
+                    if value == "1":
+                        search_config['shippable'] = True
+                        
+                elif key == "page":
+                    # Skip page parameter
+                    continue
+                    
+                else:
+                    # Generic parameter - add to kwargs filters
+                    parsed_value = LeboncoinURLParser._parse_generic_value(value)
+                    if parsed_value is not None:
+                        # Keep ranges as tuples, convert single values to lists of strings
+                        if isinstance(parsed_value, tuple):
+                            # Range values stay as tuples (e.g., (100, 200), (0, 1600))
+                            kwargs_filters[key] = parsed_value
+                        elif isinstance(parsed_value, list):
+                            # List values stay as lists of strings (e.g., ['BMW', 'Audi'])
+                            kwargs_filters[key] = parsed_value
+                        else:
+                            # Single values become lists of strings (e.g., 'BMW' -> ['BMW'])
+                            kwargs_filters[key] = [str(parsed_value)]
             
-            # Rebuild URL without locations parameter
-            new_query = urlencode(params, doseq=True)
-            url_without_locations = urlunparse((
-                parsed.scheme, 
-                parsed.netloc, 
-                parsed.path, 
-                parsed.params, 
-                new_query, 
-                parsed.fragment
-            ))
+            # Add kwargs filters to search config
+            if kwargs_filters:
+                search_config.update(kwargs_filters)
             
-            return url_without_locations, locations
+            # Set default values
+            search_config.setdefault('sort', lbc.Sort.NEWEST)
+            search_config.setdefault('ad_type', lbc.AdType.OFFER)
+            search_config.setdefault('limit', 35)
             
-        except Exception as e:
-            print(f"Error parsing URL: {e}")
-            return url, []
-    
-    @staticmethod
-    def parse_url_to_search_args(url: str) -> dict:
-        """Parse URL and convert to search arguments for client.search()."""
-        from urllib.parse import urlparse, parse_qs
-        
-        try:
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
-            
-            search_args = {}
-            
-            # Parse category
-            if 'category' in params:
-                category_id = params['category'][0]
-                if category_id in URLParser.CATEGORY_MAP:
-                    search_args['category'] = getattr(lbc.Category, URLParser.CATEGORY_MAP[category_id])
-            
-            # Parse locations
-            if 'locations' in params:
-                location_str = params['locations'][0]
-                location = URLParser.parse_location(location_str)
-                if location:
-                    search_args['locations'] = [location]
-            
-            # Parse price range
-            if 'price' in params:
-                price_str = params['price'][0]
-                price_range = URLParser.parse_price_range(price_str)
-                if price_range:
-                    search_args['price'] = price_range
-            
-            # Parse rooms
-            if 'rooms' in params:
-                rooms_str = params['rooms'][0]
-                rooms_range = URLParser.parse_range(rooms_str)
-                if rooms_range:
-                    search_args['rooms'] = rooms_range
-            
-            # Parse bedrooms
-            if 'bedrooms' in params:
-                bedrooms_str = params['bedrooms'][0]
-                bedrooms_range = URLParser.parse_range(bedrooms_str)
-                if bedrooms_range:
-                    search_args['bedrooms'] = bedrooms_range
-            
-            # Parse real estate type (use subcategory instead)
-            if 'real_estate_type' in params:
-                real_estate_type_id = params['real_estate_type'][0]
-                if real_estate_type_id in URLParser.REAL_ESTATE_TYPE_MAP:
-                    search_args['category'] = getattr(lbc.Category, URLParser.REAL_ESTATE_TYPE_MAP[real_estate_type_id])
-            
-            # Parse text search
-            if 'text' in params:
-                search_args['text'] = params['text'][0]
-            
-            # Parse owner type
-            if 'owner_type' in params:
-                owner_type_str = params['owner_type'][0]
-                if owner_type_str == 'private':
-                    search_args['owner_type'] = lbc.OwnerType.PRIVATE
-                elif owner_type_str == 'pro':
-                    search_args['owner_type'] = lbc.OwnerType.PRO
-            
-            # Default values
-            search_args.setdefault('sort', lbc.Sort.NEWEST)
-            search_args.setdefault('ad_type', lbc.AdType.OFFER)
-            search_args.setdefault('limit', 35)
-            
-            return search_args
+            return search_config
             
         except Exception as e:
             print(f"Error parsing URL: {e}")
             return {}
     
     @staticmethod
-    def parse_location(location_str: str) -> lbc.City:
-        """Parse location string to lbc.City object."""
+    def _parse_locations(location_str: str) -> List[lbc.City]:
+        """Parse location string to lbc.City objects."""
+        locations = []
+        
+        # Split by comma for multiple locations
+        location_parts = location_str.split(',')
+        
+        for location_part in location_parts:
+            location = LeboncoinURLParser._parse_single_location(location_part.strip())
+            if location:
+                locations.append(location)
+        
+        return locations
+    
+    @staticmethod
+    def _parse_single_location(location_str: str) -> Optional[lbc.City]:
+        """Parse a single location string to lbc.City object."""
         try:
-            # Handle formats like "Nanterre_92000__48.88822_2.19428_4049" or "Nanterre_92000__48.88822_2.19428_0"
+            # Handle formats like "Nanterre_92000__48.88822_2.19428_4049"
             if '__' in location_str:
                 parts = location_str.split('__')
                 city_part = parts[0]
@@ -443,12 +318,7 @@ class URLParser:
                 if len(coords_parts) >= 2:
                     lat = float(coords_parts[0])
                     lng = float(coords_parts[1])
-                    # Handle radius: preserve the exact radius value
-                    if len(coords_parts) > 2:
-                        radius = int(coords_parts[2])
-                        # Keep the exact radius value, even if it's 0
-                    else:
-                        radius = 10000  # Default radius when missing
+                    radius = int(coords_parts[2]) if len(coords_parts) > 2 else 0
                     
                     return lbc.City(
                         lat=lat,
@@ -457,253 +327,127 @@ class URLParser:
                         city=city_name
                     )
             
-            # Handle simple format like "Nanterre_92000" (no coordinates, default radius = 0)
+            # Handle simple format like "Nanterre_92000"
             else:
-                city_name, postal_code = URLParser.extract_city_from_location(location_str)
-                coords = URLTransformer.get_city_coordinates(city_name, postal_code)
-                
-                return lbc.City(
-                    lat=coords['lat'],
-                    lng=coords['lng'],
-                    radius=0,  # Default radius = 0 when no coordinates provided
-                    city=city_name
-                )
+                city_parts = location_str.split('_')
+                if len(city_parts) >= 2 and city_parts[-1].isdigit():
+                    city_name = '_'.join(city_parts[:-1])
+                    postal_code = city_parts[-1]
+                    
+                    # Get coordinates for the city
+                    coords = LeboncoinURLParser._get_city_coordinates(city_name, postal_code)
+                    
+                    return lbc.City(
+                        lat=coords['lat'],
+                        lng=coords['lng'],
+                        radius=0,
+                        city=city_name
+                    )
                 
         except Exception as e:
-            print(f"Error parsing location: {e}")
+            print(f"Error parsing location '{location_str}': {e}")
             return None
     
     @staticmethod
-    def extract_city_from_location(location: str) -> tuple[str, str]:
-        """Extract city name and postal code from location string."""
-        parts = location.split("_")
-        if len(parts) >= 2:
-            city_name = "_".join(parts[:-1])
-            postal_code = parts[-1]
-            return city_name, postal_code
-        return location, ""
-    
-    @staticmethod
-    def parse_price_range(price_str: str) -> list:
-        """Parse price range string to list."""
-        try:
-            if price_str.startswith('min-'):
-                # Format: "min-1600"
-                max_price = int(price_str.split('-')[1])
-                return [0, max_price]
-            elif '-' in price_str:
-                # Format: "1000-2000"
-                parts = price_str.split('-')
-                min_price = int(parts[0])
-                max_price = int(parts[1])
-                return [min_price, max_price]
-            else:
-                # Single price
-                price = int(price_str)
-                return [price, price]
-        except:
-            return None
-    
-    @staticmethod
-    def parse_range(range_str: str) -> tuple:
-        """Parse range string to tuple."""
-        try:
-            if '-' in range_str:
-                parts = range_str.split('-')
-                min_val = int(parts[0])
-                max_val = int(parts[1])
-                return (min_val, max_val)
-            else:
-                val = int(range_str)
-                return (val, val)
-        except:
-            return None
-
-
-# ============================================================================
-# URL TRANSFORMER
-# ============================================================================
-
-class URLTransformer:
-    """Transform Le Bon Coin URLs to the correct format with GPS coordinates."""
-    
-    # Base coordinates for major French cities
-    CITY_COORDINATES = {
-        "paris": {"lat": 48.8566, "lng": 2.3522, "postal": "75000"},
-        "lyon": {"lat": 45.7640, "lng": 4.8357, "postal": "69000"},
-        "marseille": {"lat": 43.2965, "lng": 5.3698, "postal": "13000"},
-        "toulouse": {"lat": 43.6047, "lng": 1.4442, "postal": "31000"},
-        "nice": {"lat": 43.7102, "lng": 7.2620, "postal": "06000"},
-        "nantes": {"lat": 47.2184, "lng": -1.5536, "postal": "44000"},
-        "strasbourg": {"lat": 48.5734, "lng": 7.7521, "postal": "67000"},
-        "montpellier": {"lat": 43.6110, "lng": 3.8767, "postal": "34000"},
-        "bordeaux": {"lat": 44.8378, "lng": -0.5792, "postal": "33000"},
-        "lille": {"lat": 50.6292, "lng": 3.0573, "postal": "59000"},
-        "rennes": {"lat": 48.1173, "lng": -1.6778, "postal": "35000"},
-        "reims": {"lat": 49.2583, "lng": 4.0317, "postal": "51100"},
-        "saint_etienne": {"lat": 45.09, "lng": 4.39, "postal": "42000"},
-        "toulon": {"lat": 43.1242, "lng": 5.9280, "postal": "83000"},
-        "le_havre": {"lat": 49.4944, "lng": 0.1079, "postal": "76600"},
-        "grenoble": {"lat": 45.1885, "lng": 5.7245, "postal": "38000"},
-        "dijon": {"lat": 47.3220, "lng": 5.0415, "postal": "21000"},
-        "angers": {"lat": 47.4784, "lng": -0.5632, "postal": "49000"},
-        "nimes": {"lat": 43.8367, "lng": 4.3601, "postal": "30000"},
-        "villeurbanne": {"lat": 45.7667, "lng": 4.8833, "postal": "69100"},
-        "saint_denis": {"lat": 48.9361, "lng": 2.3574, "postal": "93200"},
-        "le_mans": {"lat": 48.0061, "lng": 0.1996, "postal": "72000"},
-        "aix_en_provence": {"lat": 43.5263, "lng": 5.4454, "postal": "13100"},
-        "clermont_ferrand": {"lat": 45.7772, "lng": 3.0870, "postal": "63000"},
-        "brest": {"lat": 48.3905, "lng": -4.4860, "postal": "29200"},
-        "tours": {"lat": 47.3941, "lng": 0.6848, "postal": "37000"},
-        "limoges": {"lat": 45.8336, "lng": 1.2611, "postal": "87000"},
-        "amiens": {"lat": 49.8943, "lng": 2.2958, "postal": "80000"},
-        "perpignan": {"lat": 42.6886, "lng": 2.8948, "postal": "66000"},
-        "metz": {"lat": 49.1193, "lng": 6.1757, "postal": "57000"},
-        "nanterre": {"lat": 48.8938, "lng": 2.2064, "postal": "92000"},
-        "boulogne_billancourt": {"lat": 48.8355, "lng": 2.2413, "postal": "92100"},
-        "orleans": {"lat": 47.9029, "lng": 1.9093, "postal": "45000"},
-        "mulhouse": {"lat": 47.7508, "lng": 7.3359, "postal": "68100"},
-        "rouen": {"lat": 49.4432, "lng": 1.0993, "postal": "76000"},
-        "caen": {"lat": 49.1829, "lng": -0.3707, "postal": "14000"},
-        "dunkerque": {"lat": 51.0343, "lng": 2.3768, "postal": "59140"},
-        "nancy": {"lat": 48.6921, "lng": 6.1844, "postal": "54000"},
-        "saint_pierre": {"lat": 46.7753, "lng": -56.1773, "postal": "97500"},
-        "reunion": {"lat": -21.1151, "lng": 55.5364, "postal": "97400"},
-        "antilles": {"lat": 14.6415, "lng": -61.0242, "postal": "97200"},
-        "nouvelle_caledonie": {"lat": -22.2758, "lng": 166.4581, "postal": "98800"},
-        "polynesie": {"lat": -17.6797, "lng": -149.4068, "postal": "98700"},
-    }
-    
-    @staticmethod
-    def normalize_city_name(city_name: str) -> str:
-        """Normalize city name for lookup."""
-        return city_name.lower().replace(" ", "_").replace("-", "_")
-    
-    @staticmethod
-    def extract_city_from_location(location: str) -> tuple[str, str]:
-        """Extract city name and postal code from location string."""
-        # Handle formats like "Nanterre_92000", "Paris_75000", etc.
-        parts = location.split("_")
-        if len(parts) >= 2:
-            city_name = "_".join(parts[:-1])  # Everything except last part
-            postal_code = parts[-1]  # Last part
-            return city_name, postal_code
-        return location, ""
-    
-    @staticmethod
-    def get_city_coordinates(city_name: str, postal_code: str = "") -> dict:
+    def _get_city_coordinates(city_name: str, postal_code: str = "") -> Dict[str, float]:
         """Get coordinates for a city."""
-        normalized_name = URLTransformer.normalize_city_name(city_name)
+        # Base coordinates for major French cities
+        CITY_COORDINATES = {
+            "paris": {"lat": 48.8566, "lng": 2.3522},
+            "lyon": {"lat": 45.7640, "lng": 4.8357},
+            "marseille": {"lat": 43.2965, "lng": 5.3698},
+            "toulouse": {"lat": 43.6047, "lng": 1.4442},
+            "nice": {"lat": 43.7102, "lng": 7.2620},
+            "nantes": {"lat": 47.2184, "lng": -1.5536},
+            "strasbourg": {"lat": 48.5734, "lng": 7.7521},
+            "montpellier": {"lat": 43.6110, "lng": 3.8767},
+            "bordeaux": {"lat": 44.8378, "lng": -0.5792},
+            "lille": {"lat": 50.6292, "lng": 3.0573},
+            "rennes": {"lat": 48.1173, "lng": -1.6778},
+            "reims": {"lat": 49.2583, "lng": 4.0317},
+            "saint_etienne": {"lat": 45.09, "lng": 4.39},
+            "toulon": {"lat": 43.1242, "lng": 5.9280},
+            "le_havre": {"lat": 49.4944, "lng": 0.1079},
+            "grenoble": {"lat": 45.1885, "lng": 5.7245},
+            "dijon": {"lat": 47.3220, "lng": 5.0415},
+            "angers": {"lat": 47.4784, "lng": -0.5632},
+            "nimes": {"lat": 43.8367, "lng": 4.3601},
+            "villeurbanne": {"lat": 45.7667, "lng": 4.8833},
+            "saint_denis": {"lat": 48.9361, "lng": 2.3574},
+            "le_mans": {"lat": 48.0061, "lng": 0.1996},
+            "aix_en_provence": {"lat": 43.5263, "lng": 5.4454},
+            "clermont_ferrand": {"lat": 45.7772, "lng": 3.0870},
+            "brest": {"lat": 48.3905, "lng": -4.4860},
+            "tours": {"lat": 47.3941, "lng": 0.6848},
+            "limoges": {"lat": 45.8336, "lng": 1.2611},
+            "amiens": {"lat": 49.8943, "lng": 2.2958},
+            "perpignan": {"lat": 42.6886, "lng": 2.8948},
+            "metz": {"lat": 49.1193, "lng": 6.1757},
+            "nanterre": {"lat": 48.8938, "lng": 2.2064},
+            "boulogne_billancourt": {"lat": 48.8355, "lng": 2.2413},
+            "orleans": {"lat": 47.9029, "lng": 1.9093},
+            "mulhouse": {"lat": 47.7508, "lng": 7.3359},
+            "rouen": {"lat": 49.4432, "lng": 1.0993},
+            "caen": {"lat": 49.1829, "lng": -0.3707},
+            "dunkerque": {"lat": 51.0343, "lng": 2.3768},
+            "nancy": {"lat": 48.6921, "lng": 6.1844},
+        }
+        
+        normalized_name = city_name.lower().replace(" ", "_").replace("-", "_")
         
         # Try exact match first
-        if normalized_name in URLTransformer.CITY_COORDINATES:
-            return URLTransformer.CITY_COORDINATES[normalized_name]
+        if normalized_name in CITY_COORDINATES:
+            return CITY_COORDINATES[normalized_name]
         
         # Try partial matches
-        for city_key, coords in URLTransformer.CITY_COORDINATES.items():
+        for city_key, coords in CITY_COORDINATES.items():
             if normalized_name in city_key or city_key in normalized_name:
                 return coords
         
         # Default to Paris if not found
-        return URLTransformer.CITY_COORDINATES["paris"]
+        return CITY_COORDINATES["paris"]
     
     @staticmethod
-    def transform_url(url: str) -> str:
-        """Transform a Le Bon Coin URL to the correct format with all filters preserved."""
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-        
+    def _parse_generic_value(value: str) -> Any:
+        """Parse a generic parameter value."""
         try:
-            # Parse URL
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
-            
-            # Transform locations parameter
-            if 'locations' in params:
-                locations = params['locations'][0]
-                
-                # Normalize the location format
-                normalized_location = URLTransformer.normalize_location_format(locations)
-                
-                # Update params with normalized location
-                params['locations'] = [normalized_location]
-                
-                # Rebuild URL with all parameters preserved
-                new_query = urlencode(params, doseq=True)
-                new_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
-                
-                return new_url
-            
-            return url
-            
-        except Exception as e:
-            # If transformation fails, return original URL
-            return url
-    
-    @staticmethod
-    def normalize_location_format(location: str) -> str:
-        """Normalize location format to the correct GPS format."""
-        # Handle various formats:
-        # 1. "Nanterre_92000" -> convert to GPS format
-        # 2. "Nanterre_92000__48.88822_2.19428_4049" -> fix format but preserve GPS coordinates
-        # 3. "Nanterre__48.88822_2.19428_92000_10000" -> already correct
-        
-        # Check if location already has GPS coordinates
-        if '__' in location:
-            parts = location.split('__')
-            city_part = parts[0]
-            coords_part = parts[1] if len(parts) > 1 else ""
-            
-            # Check if coords_part contains GPS coordinates (lat_lng format)
-            coords_parts = coords_part.split('_')
-            if len(coords_parts) >= 2:
+            # Try to parse as range first (e.g., "100-200", "min-1600", "2020-max")
+            if '-' in value and len(value.split('-')) == 2:
+                range_parts = value.split('-')
                 try:
-                    # Try to parse as coordinates
-                    lat = float(coords_parts[0])
-                    lng = float(coords_parts[1])
-                    
-                    # If we have valid coordinates, preserve them
-                    if -90 <= lat <= 90 and -180 <= lng <= 180:
-                        # Extract city name from city_part
-                        city_parts = city_part.split('_')
-                        if len(city_parts) >= 2 and city_parts[-1].isdigit():
-                            # Last part is postal code
-                            city_name = '_'.join(city_parts[:-1])
-                            postal_code = city_parts[-1]
-                        else:
-                            # No postal code in city part
-                            city_name = city_part
-                            postal_code = ""
-                        
-                        # Use existing coordinates, postal code, and radius if available
-                        if len(coords_parts) >= 3:
-                            # Try to use original radius
-                            try:
-                                radius = int(coords_parts[2])
-                                # For the API lbc, we need to use the postal code from the original city part
-                                # The format should be: City__lat_lng_postal_radius
-                                normalized_location = f"{city_name}__{lat}_{lng}_{postal_code}_{radius}"
-                            except ValueError:
-                                normalized_location = f"{city_name}__{lat}_{lng}_{postal_code}_10000"
-                        else:
-                            normalized_location = f"{city_name}__{lat}_{lng}_{postal_code}_10000"
-                        return normalized_location
+                    if range_parts[0] == 'min':
+                        # Format: "min-1600"
+                        max_val = int(range_parts[1])
+                        return (0, max_val)
+                    elif range_parts[1] == 'max':
+                        # Format: "2020-max"
+                        min_val = int(range_parts[0])
+                        return (min_val, 9999999)
+                    else:
+                        # Format: "100-200"
+                        min_val = int(range_parts[0])
+                        max_val = int(range_parts[1])
+                        return (min_val, max_val)
                 except ValueError:
-                    pass  # Not valid coordinates, fall through to default handling
-        
-        # No valid GPS coordinates found, extract city and postal code
-        if '__' in location:
-            city_part = location.split('__')[0]
-            city_name, postal_code = URLTransformer.extract_city_from_location(city_part)
-        else:
-            city_name, postal_code = URLTransformer.extract_city_from_location(location)
-        
-        # Get coordinates for the city
-        coords = URLTransformer.get_city_coordinates(city_name, postal_code)
-        
-        # Build correct format: City__lat_lng_postal_radius
-        normalized_location = f"{city_name}__{coords['lat']}_{coords['lng']}_{coords['postal']}_10000"
-        
-        return normalized_location
+                    pass
+            
+            # Try to parse as comma-separated list
+            if ',' in value:
+                parts = value.split(',')
+                # Always return as strings
+                return [x.strip() for x in parts]
+            
+            # Try single integer
+            try:
+                return int(value)
+            except ValueError:
+                # Fall back to string
+                return value
+                
+        except Exception:
+            return value
+
+
 
 
 # ============================================================================
