@@ -350,62 +350,90 @@ class LeboncoinURLParser:
     
     @staticmethod
     def _get_city_coordinates(city_name: str, postal_code: str = "") -> Dict[str, float]:
-        """Get coordinates for a city."""
-        # Base coordinates for major French cities
-        CITY_COORDINATES = {
-            "paris": {"lat": 48.8566, "lng": 2.3522},
-            "lyon": {"lat": 45.7640, "lng": 4.8357},
-            "marseille": {"lat": 43.2965, "lng": 5.3698},
-            "toulouse": {"lat": 43.6047, "lng": 1.4442},
-            "nice": {"lat": 43.7102, "lng": 7.2620},
-            "nantes": {"lat": 47.2184, "lng": -1.5536},
-            "strasbourg": {"lat": 48.5734, "lng": 7.7521},
-            "montpellier": {"lat": 43.6110, "lng": 3.8767},
-            "bordeaux": {"lat": 44.8378, "lng": -0.5792},
-            "lille": {"lat": 50.6292, "lng": 3.0573},
-            "rennes": {"lat": 48.1173, "lng": -1.6778},
-            "reims": {"lat": 49.2583, "lng": 4.0317},
-            "saint_etienne": {"lat": 45.09, "lng": 4.39},
-            "toulon": {"lat": 43.1242, "lng": 5.9280},
-            "le_havre": {"lat": 49.4944, "lng": 0.1079},
-            "grenoble": {"lat": 45.1885, "lng": 5.7245},
-            "dijon": {"lat": 47.3220, "lng": 5.0415},
-            "angers": {"lat": 47.4784, "lng": -0.5632},
-            "nimes": {"lat": 43.8367, "lng": 4.3601},
-            "villeurbanne": {"lat": 45.7667, "lng": 4.8833},
-            "saint_denis": {"lat": 48.9361, "lng": 2.3574},
-            "le_mans": {"lat": 48.0061, "lng": 0.1996},
-            "aix_en_provence": {"lat": 43.5263, "lng": 5.4454},
-            "clermont_ferrand": {"lat": 45.7772, "lng": 3.0870},
-            "brest": {"lat": 48.3905, "lng": -4.4860},
-            "tours": {"lat": 47.3941, "lng": 0.6848},
-            "limoges": {"lat": 45.8336, "lng": 1.2611},
-            "amiens": {"lat": 49.8943, "lng": 2.2958},
-            "perpignan": {"lat": 42.6886, "lng": 2.8948},
-            "metz": {"lat": 49.1193, "lng": 6.1757},
-            "nanterre": {"lat": 48.8938, "lng": 2.2064},
-            "boulogne_billancourt": {"lat": 48.8355, "lng": 2.2413},
-            "orleans": {"lat": 47.9029, "lng": 1.9093},
-            "mulhouse": {"lat": 47.7508, "lng": 7.3359},
-            "rouen": {"lat": 49.4432, "lng": 1.0993},
-            "caen": {"lat": 49.1829, "lng": -0.3707},
-            "dunkerque": {"lat": 51.0343, "lng": 2.3768},
-            "nancy": {"lat": 48.6921, "lng": 6.1844},
-        }
-        
-        normalized_name = city_name.lower().replace(" ", "_").replace("-", "_")
-        
-        # Try exact match first
-        if normalized_name in CITY_COORDINATES:
-            return CITY_COORDINATES[normalized_name]
-        
-        # Try partial matches
-        for city_key, coords in CITY_COORDINATES.items():
-            if normalized_name in city_key or city_key in normalized_name:
-                return coords
-        
-        # Default to Paris if not found
-        return CITY_COORDINATES["paris"]
+        """Get coordinates for a city using free API."""
+        try:
+            import requests
+            import time
+            
+            # Build search query for API Adresse (data.gouv.fr)
+            query_parts = []
+            if city_name:
+                query_parts.append(city_name.replace("_", " "))
+            if postal_code:
+                query_parts.append(postal_code)
+            
+            query = " ".join(query_parts)
+            
+            # API Adresse de data.gouv.fr (gratuite pour la France)
+            url = "https://api-adresse.data.gouv.fr/search"
+            params = {
+                "q": query,
+                "limit": 1,
+                "type": "municipality"  # Focus on municipalities
+            }
+            
+            # Make request with timeout
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("features") and len(data["features"]) > 0:
+                    feature = data["features"][0]
+                    geometry = feature.get("geometry", {})
+                    coordinates = geometry.get("coordinates", [])
+                    
+                    if len(coordinates) >= 2:
+                        # API returns [lng, lat] format
+                        lng, lat = coordinates[0], coordinates[1]
+                        return {"lat": lat, "lng": lng}
+            
+            # Fallback to Nominatim (OpenStreetMap) if API Adresse fails
+            return LeboncoinURLParser._get_coordinates_nominatim(query)
+            
+        except Exception as e:
+            print(f"Error getting coordinates for {city_name}: {e}")
+            # Fallback to Paris coordinates
+            return {"lat": 48.8566, "lng": 2.3522}
+    
+    @staticmethod
+    def _get_coordinates_nominatim(query: str) -> Dict[str, float]:
+        """Fallback method using Nominatim (OpenStreetMap)."""
+        try:
+            import requests
+            import time
+            
+            # Nominatim API (OpenStreetMap) - free but with rate limiting
+            url = "https://nominatim.openstreetmap.org/search"
+            params = {
+                "q": f"{query}, France",
+                "format": "json",
+                "limit": 1,
+                "addressdetails": 1
+            }
+            
+            # Add user agent header (required by Nominatim)
+            headers = {
+                "User-Agent": "LeboncoinScraper/1.0"
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data and len(data) > 0:
+                    result = data[0]
+                    lat = float(result["lat"])
+                    lng = float(result["lon"])
+                    return {"lat": lat, "lng": lng}
+            
+            # Final fallback to Paris
+            return {"lat": 48.8566, "lng": 2.3522}
+            
+        except Exception as e:
+            print(f"Error with Nominatim fallback: {e}")
+            return {"lat": 48.8566, "lng": 2.3522}
     
     @staticmethod
     def _parse_generic_value(value: str) -> Any:
