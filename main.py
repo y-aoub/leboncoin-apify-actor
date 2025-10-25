@@ -77,7 +77,8 @@ class Config:
             # URL scraping mode - parse URL to search args
             raw_url = input_data.get("direct_url", "").strip()
             self.direct_url = raw_url
-            self.search_args = URLParser.parse_url_to_search_args(raw_url)
+            from url_parsing import parse_leboncoin_url
+            self.search_args = parse_leboncoin_url(raw_url)
             
             # Log parsed search arguments
             if self.search_args:
