@@ -767,7 +767,8 @@ class ScraperEngine:
         """Scrape using search arguments (sequential, optimized for speed)."""
         all_ads = []
         
-        max_pages = self.config.max_pages if self.config.max_pages > 0 else 999999
+        # If max_pages is 0, scrape all available pages (practically unlimited)
+        max_pages = self.config.max_pages if self.config.max_pages > 0 else 99999
         
         # Validate search arguments
         if not self.config.search_args:

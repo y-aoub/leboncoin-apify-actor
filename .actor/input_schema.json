@@ -16,7 +16,7 @@
     "max_pages": {
       "title": "Pages maximum",
       "type": "integer",
-      "description": "Nombre maximum de pages à scraper (0 = toutes les pages). Recommandé: 10-20",
+      "description": "Nombre maximum de pages à scraper. Mettez 0 pour scraper toutes les pages disponibles (limite pratique de 99999 pages). Recommandé: 10-20 pour commencer.",
       "editor": "number",
       "default": 10,
       "minimum": 0,
