@@ -1,5 +1,4 @@
 # Core dependencies
-lbc>=1.0.10
 curl-cffi==0.11.3
 
 # Apify SDK
@@ -11,6 +10,6 @@ python-dateutil>=2.8.0
 # Logging
 colorlog>=6.8.0
 
-# lbc api
-git+https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/lbc.git
+# lbc api - Public repository
+git+https://github.com/y-aoub/lbc_.git
 
