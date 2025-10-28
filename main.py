@@ -709,7 +709,7 @@ class ScraperEngine:
             # Store and log total available ads on first page only
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
                 self.total_ads_available = result.total
-                self.logger.info(f"=== FOUND {result.total} ADS IN {result.max_pages} PAGES ===")
+                self.logger.info(f"Found {result.total} ads in {result.max_pages} pages")
             
             # Fast exit if no ads
             if not hasattr(result, 'ads') or not result.ads:
@@ -795,9 +795,8 @@ class ScraperEngine:
                 self.stats["total_ads"] += len(page_ads)
                 self.stats["unique_ads"] += len(page_ads)
                 self.stats["pages_processed"] += 1
-                # Log every 5 pages to reduce overhead
-                if page % 5 == 1:
-                    self.logger.info(f"Page {page}: {len(page_ads)} ads extracted")
+                # Log every page
+                self.logger.info(f"Page {page}: {len(page_ads)} ads extracted")
             
             # Push batch when full or stopping
             if len(batch_ads) >= batch_size * self.config.limit_per_page or should_stop:
@@ -820,9 +819,9 @@ class ScraperEngine:
         
         # Display total available vs scraped
         if self.total_ads_available is not None:
-            self.logger.info(f"=== TOTAL ADS AVAILABLE: {self.total_ads_available} | SCRAPED: {len(all_ads)} FROM {self.stats['pages_processed']} PAGES ===")
+            self.logger.info(f"Total ads available: {self.total_ads_available} | Scraped: {len(all_ads)} from {self.stats['pages_processed']} pages")
         else:
-            self.logger.info(f"=== SCRAPING COMPLETED: {len(all_ads)} ADS EXTRACTED FROM {self.stats['pages_processed']} PAGES ===")
+            self.logger.info(f"Scraping completed: {len(all_ads)} ads extracted from {self.stats['pages_processed']} pages")
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
@@ -845,9 +844,9 @@ class ScraperEngine:
         
         # Final summary
         if self.total_ads_available is not None:
-            self.logger.info(f"=== FINAL SUMMARY: {self.total_ads_available} TOTAL ADS AVAILABLE | {self.stats['unique_ads']} EXTRACTED | {self.stats['pages_processed']} PAGES | {self.stats['duplicates']} DUPLICATES ===")
+            self.logger.info(f"Final summary: {self.total_ads_available} total ads available | {self.stats['unique_ads']} extracted | {self.stats['pages_processed']} pages | {self.stats['duplicates']} duplicates")
         else:
-            self.logger.info(f"=== FINAL SUMMARY: {self.stats['unique_ads']} UNIQUE ADS, {self.stats['pages_processed']} PAGES, {self.stats['duplicates']} DUPLICATES ===")
+            self.logger.info(f"Final summary: {self.stats['unique_ads']} unique ads, {self.stats['pages_processed']} pages, {self.stats['duplicates']} duplicates")
         
         return {
             "stats": self.stats,
