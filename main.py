@@ -77,10 +77,10 @@ class Config:
             raw_url = input_data.get("direct_url", "").strip()
             self.direct_url = raw_url
             self.search_args = LeboncoinURLParser.parse_url_to_search_config(raw_url)
-            
-            # Log parsed search arguments
-            if self.search_args:
-                print(f"Parsed search arguments from URL: {self.search_args}")
+        
+        # Log parsed search arguments
+        if self.search_args:
+            print(f"Parsed search arguments from URL: {self.search_args}")
         
         # Pagination
         self.max_pages = input_data.get("max_pages", 10)
@@ -294,7 +294,8 @@ class LeboncoinURLParser:
     def _parse_single_location(location_str: str) -> Optional[lbc.City]:
         """Parse a single location string to lbc.City object."""
         try:
-            # Handle formats like "Nanterre_92000__48.88822_2.19428_4049"
+            # Handle formats like "Paris__48.86023250788424_2.339006433295173_9256_1000"
+            # or "Nanterre_92000__48.88822_2.19428_9256_1000"
             if '__' in location_str:
                 parts = location_str.split('__')
                 city_part = parts[0]
@@ -302,22 +303,27 @@ class LeboncoinURLParser:
                 
                 # Extract city name
                 city_parts = city_part.split('_')
+                # Check if last part is a postal code (digits only)
                 if len(city_parts) >= 2 and city_parts[-1].isdigit():
+                    # Format: "Nanterre_92000" -> city_name = "Nanterre", postal_code = "92000"
                     city_name = '_'.join(city_parts[:-1])
                 else:
+                    # Format: "Paris" -> city_name = "Paris"
                     city_name = city_part
                 
-                # Extract coordinates
+                # Extract coordinates: lat, lng, default_radius, radius
                 coords_parts = coords_part.split('_')
                 if len(coords_parts) >= 2:
                     lat = float(coords_parts[0])
                     lng = float(coords_parts[1])
-                    radius = int(coords_parts[2]) if len(coords_parts) > 2 else 0
+                    default_radius = int(coords_parts[2]) if len(coords_parts) > 2 else None
+                    radius = int(coords_parts[3]) if len(coords_parts) > 3 else 0
                     
                     return lbc.City(
                         lat=lat,
                         lng=lng,
                         radius=radius,
+                        default_radius=default_radius,
                         city=city_name
                     )
             
@@ -330,13 +336,13 @@ class LeboncoinURLParser:
                     
                     # Get coordinates for the city
                     coords = LeboncoinURLParser._get_city_coordinates(city_name, postal_code)
-                    
-                    return lbc.City(
-                        lat=coords['lat'],
-                        lng=coords['lng'],
+                
+                return lbc.City(
+                    lat=coords['lat'],
+                    lng=coords['lng'],
                         radius=0,
-                        city=city_name
-                    )
+                    city=city_name
+                )
                 
         except Exception as e:
             print(f"Error parsing location '{location_str}': {e}")
@@ -622,6 +628,7 @@ class ScraperEngine:
         self.logger = logger
         self.client = None
         self.seen_ids = set()
+        self.total_ads_available = None  # Total ads available on Leboncoin
         self.stats = {
             "total_ads": 0,
             "unique_ads": 0,
@@ -685,9 +692,10 @@ class ScraperEngine:
             
             result = self.client.search(**search_args)
             
-            # Log info on first page only
+            # Store and log total available ads on first page only
             if page_num == 1 and hasattr(result, 'max_pages') and hasattr(result, 'total'):
-                self.logger.info(f"Found {result.total} ads in {result.max_pages} pages")
+                self.total_ads_available = result.total
+                self.logger.info(f"=== FOUND {result.total} ADS IN {result.max_pages} PAGES ===")
             
             # Fast exit if no ads
             if not hasattr(result, 'ads') or not result.ads:
@@ -795,7 +803,11 @@ class ScraperEngine:
         if batch_ads:
             await ApifyAdapter.push_data(batch_ads)
         
-        self.logger.info(f"Scraping completed: {len(all_ads)} ads from {self.stats['pages_processed']} pages")
+        # Display total available vs scraped
+        if self.total_ads_available is not None:
+            self.logger.info(f"=== TOTAL ADS AVAILABLE: {self.total_ads_available} | SCRAPED: {len(all_ads)} FROM {self.stats['pages_processed']} PAGES ===")
+        else:
+            self.logger.info(f"=== SCRAPING COMPLETED: {len(all_ads)} ADS EXTRACTED FROM {self.stats['pages_processed']} PAGES ===")
         return all_ads
     
     async def run(self) -> Dict[str, Any]:
@@ -817,12 +829,16 @@ class ScraperEngine:
         all_ads = await self.scrape_from_url()
         
         # Final summary
-        self.logger.info(f"Completed: {self.stats['unique_ads']} ads, {self.stats['pages_processed']} pages")
+        if self.total_ads_available is not None:
+            self.logger.info(f"=== FINAL SUMMARY: {self.total_ads_available} TOTAL ADS AVAILABLE | {self.stats['unique_ads']} EXTRACTED | {self.stats['pages_processed']} PAGES | {self.stats['duplicates']} DUPLICATES ===")
+        else:
+            self.logger.info(f"=== FINAL SUMMARY: {self.stats['unique_ads']} UNIQUE ADS, {self.stats['pages_processed']} PAGES, {self.stats['duplicates']} DUPLICATES ===")
         
         return {
             "stats": self.stats,
             "ads": all_ads,
-            "config": self.config.to_dict()
+            "config": self.config.to_dict(),
+            "total_ads_available": self.total_ads_available
         }
     
 
@@ -849,6 +865,10 @@ async def main() -> None:
             engine = ScraperEngine(config, logger)
             result = await engine.run()
             
+            # Display total ads found
+            if result.get("total_ads_available"):
+                logger.info(f"TOTAL ADS FOUND IN SEARCH: {result['total_ads_available']}")
+            
             # Set output
             await Actor.set_value('OUTPUT', result)
             
@@ -860,6 +880,10 @@ async def main() -> None:
         
         engine = ScraperEngine(config, logger)
         result = await engine.run()
+        
+        # Display total ads found
+        if result.get("total_ads_available"):
+            logger.info(f"TOTAL ADS FOUND IN SEARCH: {result['total_ads_available']}")
         
         # Save local output
         with open("scraper_results.json", "w", encoding="utf-8") as f:
