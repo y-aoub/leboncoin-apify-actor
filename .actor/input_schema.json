@@ -16,11 +16,10 @@
     "max_pages": {
       "title": "Pages maximum",
       "type": "integer",
-      "description": "Nombre maximum de pages à scraper. Recommandé: 10-20",
+      "description": "Nombre maximum de pages à scraper (0 = toutes les pages). Recommandé: 10-20",
       "editor": "number",
       "default": 10,
-      "minimum": 1,
-      "maximum": 100,
+      "minimum": 0,
       "sectionCaption": "⚙️ Paramètres de scraping",
       "sectionDescription": "Contrôlez le volume et la vitesse de scraping"
     },

@@ -327,22 +327,36 @@ class LeboncoinURLParser:
                         city=city_name
                     )
             
-            # Handle simple format like "Nanterre_92000"
+            # Handle simple format like "Nanterre_92000" or "Marseille"
             else:
                 city_parts = location_str.split('_')
                 if len(city_parts) >= 2 and city_parts[-1].isdigit():
+                    # Format: "Nanterre_92000" -> city_name = "Nanterre", postal_code = "92000"
                     city_name = '_'.join(city_parts[:-1])
                     postal_code = city_parts[-1]
                     
                     # Get coordinates for the city
                     coords = LeboncoinURLParser._get_city_coordinates(city_name, postal_code)
-                
-                return lbc.City(
-                    lat=coords['lat'],
-                    lng=coords['lng'],
+                    
+                    return lbc.City(
+                        lat=coords['lat'],
+                        lng=coords['lng'],
                         radius=0,
-                    city=city_name
-                )
+                        city=city_name
+                    )
+                else:
+                    # Format: "Marseille" -> city_name = "Marseille", no postal code
+                    city_name = location_str
+                    
+                    # Get coordinates for the city without postal code
+                    coords = LeboncoinURLParser._get_city_coordinates(city_name, "")
+                    
+                    return lbc.City(
+                        lat=coords['lat'],
+                        lng=coords['lng'],
+                        radius=0,
+                        city=city_name
+                    )
                 
         except Exception as e:
             print(f"Error parsing location '{location_str}': {e}")
@@ -753,7 +767,7 @@ class ScraperEngine:
         """Scrape using search arguments (sequential, optimized for speed)."""
         all_ads = []
         
-        max_pages = self.config.max_pages if self.config.max_pages > 0 else 100
+        max_pages = self.config.max_pages if self.config.max_pages > 0 else 999999
         
         # Validate search arguments
         if not self.config.search_args:

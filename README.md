@@ -47,7 +47,7 @@ Ce scraper collecte automatiquement les annonces depuis Leboncoin selon vos crit
 
 | Champ | Description | Défaut |
 |-------|-------------|--------|
-| **Max pages** | Nombre maximum de pages (0 = illimité) | `10` |
+| **Max pages** | Nombre maximum de pages (0 = toutes les pages, illimité) | `10` |
 | **Max age days** | Âge maximum des annonces en jours (0 = tous) | `0` |
 | **Output format** | Format de sortie | `detailed` (complet) ou `compact` (essentiel) |
 | **Delay between pages** | Délai entre pages en secondes | `1` |
@@ -315,7 +315,7 @@ Liste complète : voir l'onglet "Input" de l'Actor.
 
 ### Limites techniques
 
-**Pagination :** Leboncoin limite généralement à ~100 pages par recherche. Pour extraire plus de données, affinez vos filtres (par département, prix, etc.).
+**Pagination :** Vous pouvez maintenant scraper un nombre illimité de pages. Pour de meilleures performances, affinez vos filtres (par département, prix, etc.).
 
 **Blocages :** Pour de gros volumes ou une utilisation intensive, un proxy français est fortement recommandé (voir section Proxy ci-dessous).
 
