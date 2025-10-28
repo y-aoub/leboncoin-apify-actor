@@ -194,7 +194,7 @@ Absolument ! L'outil s'intègre parfaitement dans vos workflows automatisés gr�
 ### Que faire des données exportées ?
 
 Vous pouvez :
-- Les importer dans Excel pour des analyses
+- Les importer dans Excel/JSON pour des analyses
 - Les charger dans une base de données
 - Les utiliser dans vos outils de veille
 - Les intégrer dans votre CRM

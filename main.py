@@ -78,10 +78,6 @@ class Config:
             self.direct_url = raw_url
             self.search_args = LeboncoinURLParser.parse_url_to_search_config(raw_url)
         
-        # Log parsed search arguments
-        if self.search_args:
-            print(f"Parsed search arguments from URL: {self.search_args}")
-        
         # Pagination
         self.max_pages = input_data.get("max_pages", 10)
         self.limit_per_page = input_data.get("limit_per_page", 35)
