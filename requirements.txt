@@ -12,5 +12,5 @@ python-dateutil>=2.8.0
 colorlog>=6.8.0
 
 # lbc api
-git+https://${GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/lbc.git
+git+https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/lbc.git
 
