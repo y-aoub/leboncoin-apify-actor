@@ -66,27 +66,20 @@ class Config:
     
     def __init__(self, input_data: Dict[str, Any]):
         """Initialize configuration from input data."""
-        # Check for multiple URLs mode
+        # URLs list mode (always use this now)
         self.urls_list = input_data.get("urls_list", [])
         if isinstance(self.urls_list, str):
             self.urls_list = [self.urls_list]
         
-        # If URLs list provided, store them; otherwise use single URL
-        if self.urls_list:
-            # Multiple URLs mode
-            self.direct_url = None
-            self.search_args = None
-        else:
-            # Check if search_args are provided directly or need to be parsed from URL
-            if "search_args" in input_data and input_data["search_args"]:
-                # Direct search arguments provided
-                self.search_args = input_data["search_args"]
-                self.direct_url = ""  # No URL when using direct search args
-            else:
-                # URL scraping mode - parse URL to search args
-                raw_url = input_data.get("direct_url", "").strip()
-                self.direct_url = raw_url
-                self.search_args = LeboncoinURLParser.parse_url_to_search_config(raw_url)
+        # Legacy support for old direct_url field
+        if not self.urls_list and "direct_url" in input_data:
+            direct_url = input_data.get("direct_url", "").strip()
+            if direct_url:
+                self.urls_list = [direct_url]
+        
+        # URLs mode
+        self.direct_url = None
+        self.search_args = None
         
         # Pagination
         self.max_pages = input_data.get("max_pages", 10)
@@ -870,18 +863,10 @@ class ScraperEngine:
                 # Small delay between URLs
                 if idx < len(self.config.urls_list) and self.config.delay_between_pages > 0:
                     await asyncio.sleep(self.config.delay_between_pages)
-        else:
-            # Single URL mode
-            if self.config.direct_url:
-                self.logger.info(f"URL: {self.config.direct_url}")
-                if self.config.search_args:
-                    self.logger.info(f"Parsed search arguments: {self.config.search_args}")
-            else:
-                self.logger.info(f"Search args: {self.config.search_args}")
-            self.logger.info(f"Max pages: {self.config.max_pages}, Delay: {self.config.delay_between_pages}s")
-            
-            # Scrape using search arguments
-            all_ads = await self.scrape_from_url()
+        
+        if not self.config.urls_list:
+            self.logger.error("No URLs provided in urls_list")
+            return []
         
         # Final summary
         if self.total_ads_available is not None:
