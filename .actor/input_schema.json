@@ -5,14 +5,13 @@
   "schemaVersion": 1,
   "properties": {
     "urls_list": {
-      "title": "URLs à scraper",
+      "title": "URLs à scraper *",
       "type": "array",
-      "description": "Entrez une ou plusieurs URLs de recherche Leboncoin (doivent contenir /recherche dans le chemin). Les URLs de catégories (ex: /cl/...) ne sont pas supportées.",
+      "description": "Entrez une ou plusieurs URLs de recherche Leboncoin (doivent contenir /recherche dans le chemin). Les URLs de catégories (ex: /cl/...) ne sont pas supportées. Ce champ est obligatoire.",
       "editor": "stringList",
       "items": {
         "type": "string"
       },
-      "default": ["https://www.leboncoin.fr/recherche?category=2&text=iphone&locations=Paris"],
       "sectionCaption": "🎯 URLs de recherche",
       "sectionDescription": "Scrapez une ou plusieurs recherches en une seule exécution"
     },
