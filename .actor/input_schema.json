@@ -17,7 +17,7 @@
       "title": "Liste des URLs à scraper",
       "type": "array",
       "description": "Entrez une ou plusieurs URLs de recherche Leboncoin à scraper. Prioritaire sur 'URL de recherche' si fourni.",
-      "editor": "textfield",
+      "editor": "stringList",
       "items": {
         "type": "string"
       },
