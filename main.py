@@ -758,15 +758,24 @@ class ScraperEngine:
                     continue
                 
                 # Age filter (optimized)
+                # Uses index_date (last update) if available, otherwise first_publication_date
                 if self.config.max_age_days > 0:
-                    if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
+                    date_to_check = None
+                    
+                    # Prefer index_date (last update) over first_publication_date
+                    if hasattr(ad, 'index_date') and ad.index_date:
+                        date_to_check = ad.index_date
+                    elif hasattr(ad, 'first_publication_date') and ad.first_publication_date:
+                        date_to_check = ad.first_publication_date
+                    
+                    if date_to_check:
                         try:
                             # Handle both datetime objects and string dates
-                            pub_date = ad.first_publication_date
-                            if isinstance(pub_date, str):
-                                pub_date = datetime.strptime(pub_date, "%Y-%m-%d %H:%M:%S")
+                            check_date = date_to_check
+                            if isinstance(check_date, str):
+                                check_date = datetime.strptime(check_date, "%Y-%m-%d %H:%M:%S")
                             
-                            ad_age_days = (datetime.now() - pub_date).days
+                            ad_age_days = (datetime.now() - check_date).days
                             if ad_age_days > self.config.max_age_days:
                                 old_ads_count += 1
                                 if old_ads_count >= self.config.consecutive_old_limit:
