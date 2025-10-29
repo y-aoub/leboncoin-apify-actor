@@ -623,6 +623,7 @@ class AdTransformer:
         ad_data["scraped_at"] = now_str
         ad_data["search_category"] = search_context.get("category", "Unknown")
         ad_data["search_location"] = search_context.get("location", "Unknown")
+        ad_data["search_url"] = search_context.get("search_url", "Unknown")
         
         return ad_data
     
@@ -686,13 +687,14 @@ class ScraperEngine:
             self.logger.info("Leboncoin client initialized without proxy")
     
     
-    def _scrape_single_page(self, page_num: int) -> tuple[List[Dict[str, Any]], bool]:
+    def _scrape_single_page(self, page_num: int, search_url: str = None) -> tuple[List[Dict[str, Any]], bool]:
         """
         Scrape a single page using parsed search arguments.
         Returns (ads_list, should_stop).
         
         Args:
             page_num: Page number to scrape
+            search_url: Original URL used for this search (optional)
             
         Returns:
             Tuple of (list of ads, boolean indicating if scraping should stop)
@@ -718,7 +720,34 @@ class ScraperEngine:
             old_ads_count = 0
             
             # Static search context (reused for all ads on this page)
-            search_context = {"category": "URL", "location": "Direct URL"}
+            # Extract category and location from search args
+            category_name = "Unknown"
+            location_name = "Unknown"
+            
+            if hasattr(search_args, 'get'):
+                category = search_args.get('category')
+                if category:
+                    if hasattr(category, 'name'):
+                        category_name = category.name
+                    elif hasattr(category, 'value'):
+                        category_name = category.value
+                    elif isinstance(category, str):
+                        category_name = category
+                
+                # Try to get location from locations array
+                locations = search_args.get('locations', [])
+                if locations and len(locations) > 0:
+                    first_loc = locations[0]
+                    if hasattr(first_loc, 'city'):
+                        location_name = first_loc.city
+                    elif hasattr(first_loc, 'name'):
+                        location_name = first_loc.name
+            
+            search_context = {
+                "category": category_name, 
+                "location": location_name,
+                "search_url": search_url if search_url else "Unknown"
+            }
             
             # Process ads
             for ad in result.ads:
@@ -786,7 +815,7 @@ class ScraperEngine:
         
         while page <= max_pages:
             # Scrape page
-            page_ads, should_stop = self._scrape_single_page(page)
+            page_ads, should_stop = self._scrape_single_page(page, search_url=self.config.direct_url)
             
             if page_ads:
                 all_ads.extend(page_ads)
@@ -841,6 +870,9 @@ class ScraperEngine:
                 
                 # Parse URL to search args
                 search_args = LeboncoinURLParser.parse_url_to_search_config(url)
+                
+                # Log parsed arguments for debugging
+                self.logger.info(f"Search arguments from URL {idx}: {search_args}")
                 
                 # Temporarily override config search args
                 original_search_args = self.config.search_args
