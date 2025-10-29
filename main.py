@@ -760,12 +760,21 @@ class ScraperEngine:
                 # Age filter (optimized)
                 if self.config.max_age_days > 0:
                     if hasattr(ad, 'first_publication_date') and ad.first_publication_date:
-                        ad_age_days = (datetime.now() - ad.first_publication_date).days
-                        if ad_age_days > self.config.max_age_days:
-                            old_ads_count += 1
-                            if old_ads_count >= self.config.consecutive_old_limit:
-                                return page_ads, True
-                            continue
+                        try:
+                            # Handle both datetime objects and string dates
+                            pub_date = ad.first_publication_date
+                            if isinstance(pub_date, str):
+                                pub_date = datetime.strptime(pub_date, "%Y-%m-%d %H:%M:%S")
+                            
+                            ad_age_days = (datetime.now() - pub_date).days
+                            if ad_age_days > self.config.max_age_days:
+                                old_ads_count += 1
+                                if old_ads_count >= self.config.consecutive_old_limit:
+                                    return page_ads, True
+                                continue
+                        except (ValueError, TypeError, AttributeError):
+                            # Skip if date parsing fails
+                            pass
                     old_ads_count = 0
                 
                 # Transform and add (bulk processing, no individual error handling for speed)
