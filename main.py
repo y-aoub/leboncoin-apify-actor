@@ -93,8 +93,6 @@ class Config:
         # Proxy settings (Apify ProxyConfiguration)
         self.proxy_configuration = input_data.get("proxyConfiguration")
         
-        # Output settings
-        self.output_format = input_data.get("output_format", "detailed")
         
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary."""
@@ -103,8 +101,7 @@ class Config:
             "max_pages": self.max_pages,
             "limit_per_page": self.limit_per_page,
             "delay_between_pages": self.delay_between_pages,
-            "max_age_days": self.max_age_days,
-            "output_format": self.output_format
+            "max_age_days": self.max_age_days
         }
 
 
