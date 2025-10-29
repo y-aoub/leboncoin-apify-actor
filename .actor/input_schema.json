@@ -10,8 +10,20 @@
       "description": "Collez l'URL complète de votre recherche Leboncoin (doit contenir /recherche dans le chemin). Les URLs de catégories (ex: /cl/...) ne sont pas supportées.",
       "editor": "textfield",
       "prefill": "https://www.leboncoin.fr/recherche?category=2&text=iphone&locations=Paris_75000",
-      "sectionCaption": "🎯 URL de recherche",
+      "sectionCaption": "🎯 URL de recherche (ancien mode)",
       "sectionDescription": "Collez l'URL complète d'une page de recherche Leboncoin"
+    },
+    "urls_list": {
+      "title": "Liste des URLs à scraper",
+      "type": "array",
+      "description": "Entrez une ou plusieurs URLs de recherche Leboncoin à scraper. Prioritaire sur 'URL de recherche' si fourni.",
+      "editor": "textfield",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "sectionCaption": "🎯 URLs multiples",
+      "sectionDescription": "Scrapez plusieurs recherches en une seule exécution"
     },
     "max_pages": {
       "title": "Pages maximum",
@@ -73,5 +85,5 @@
       "enumTitles": ["Détaillé (tous les champs)", "Compact (essentiel uniquement)"]
     }
   },
-  "required": ["direct_url"]
+  "required": []
 }
