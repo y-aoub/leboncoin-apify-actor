@@ -2,7 +2,7 @@
   "actorSpecification": 1,
   "name": "leboncoin-universal-scraper",
   "title": "Leboncoin Universal Scraper",
-  "description": "Advanced scraper for Leboncoin.fr - All categories, locations, and filters supported",
+  "description": "Extract unlimited Leboncoin listings automatically. Simply paste your search URL and get structured data in minutes. Perfect for market analysis, price monitoring, and lead generation.",
   "version": "1.0.0",
   "meta": {
     "templateId": "python-start"
@@ -58,4 +58,3 @@
     }
   }
 }
-
