@@ -1,63 +1,63 @@
 {
-  "title": "Leboncoin Scraper - Mode URL",
-  "description": "Scraper Leboncoin à partir d'une URL de recherche",
+  "title": "Leboncoin Scraper",
+  "description": "Scrape Leboncoin listings from search URLs",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "urls_list": {
-      "title": "URLs à scraper *",
+      "title": "Search URLs *",
       "type": "array",
-      "description": "Entrez une ou plusieurs URLs de recherche Leboncoin (doivent contenir /recherche dans le chemin). Les URLs de catégories (ex: /cl/...) ne sont pas supportées. Ce champ est obligatoire.",
+      "description": "Enter one or more Leboncoin search URLs (must contain /recherche in the path). Category URLs (e.g. /cl/...) are not supported. This field is required.",
       "editor": "stringList",
       "items": {
         "type": "string"
       },
-      "sectionCaption": "🎯 URLs de recherche",
-      "sectionDescription": "Scrapez une ou plusieurs recherches en une seule exécution"
+      "sectionCaption": "🎯 Search URLs",
+      "sectionDescription": "Scrape one or multiple searches in a single run"
     },
     "max_pages": {
-      "title": "Pages maximum",
+      "title": "Max pages",
       "type": "integer",
-      "description": "Nombre maximum de pages à scraper. Mettez 0 pour scraper toutes les pages disponibles (limite pratique de 99999 pages). Recommandé: 10-20 pour commencer.",
+      "description": "Maximum number of pages to scrape. Set 0 to scrape all available pages (practical limit of 99999 pages). Recommended: 10-20 to start.",
       "editor": "number",
       "default": 10,
       "minimum": 0,
-      "sectionCaption": "⚙️ Paramètres de scraping",
-      "sectionDescription": "Contrôlez le volume et la vitesse de scraping"
+      "sectionCaption": "⚙️ Scraping settings",
+      "sectionDescription": "Control volume and scraping speed"
     },
     "limit_per_page": {
-      "title": "Annonces par page",
+      "title": "Ads per page",
       "type": "integer",
-      "description": "Nombre d'annonces à scraper par page (Leboncoin affiche généralement 35 annonces/page)",
+      "description": "Number of ads to scrape per page (Leboncoin typically displays 35 ads/page)",
       "editor": "number",
       "default": 35,
       "minimum": 1,
       "maximum": 100
     },
     "delay_between_pages": {
-      "title": "Délai entre pages (secondes)",
+      "title": "Delay between pages (seconds)",
       "type": "number",
-      "description": "Temps d'attente entre chaque page (0 = vitesse maximale recommandée)",
+      "description": "Wait time between each page (0 = maximum speed recommended)",
       "editor": "number",
       "default": 0,
       "minimum": 0,
       "maximum": 5
     },
     "max_age_days": {
-      "title": "Âge maximum des annonces (jours)",
+      "title": "Max ad age (days)",
       "type": "integer",
-      "description": "Ignorer les annonces plus vieilles que X jours (0 = désactivé)",
+      "description": "Ignore ads older than X days (0 = disabled)",
       "editor": "number",
       "default": 0,
       "minimum": 0,
       "maximum": 365
     },
     "proxyConfiguration": {
-      "title": "Configuration proxy",
+      "title": "Proxy configuration",
       "type": "object",
-      "description": "Utiliser des proxies pour éviter les blocages (recommandé pour gros volumes)",
+      "description": "Use proxies to avoid blocking (recommended for high volume)",
       "editor": "proxy",
-      "sectionCaption": "🔒 Protection anti-blocage",
+      "sectionCaption": "🔒 Anti-blocking protection",
       "prefill": {
         "useApifyProxy": true,
         "apifyProxyGroups": ["RESIDENTIAL"],

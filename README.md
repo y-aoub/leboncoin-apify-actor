@@ -17,7 +17,7 @@ Stop scrolling and copy-pasting. Collect thousands of listings automatically, fi
 ## 🚀 Quick start
 
 1. Go to Leboncoin.fr and perform a search
-2. Copy the search URL (e.g. `https://www.leboncoin.fr/recherche?category=9&locations=Paris&price=100000-300000`)
+2. Copy the search URL **from the search results page** (the URL should start with `https://www.leboncoin.fr/recherche?...`)
 3. Paste it in the input (or provide multiple URLs) and run
 4. Fetch your data in minutes
 
