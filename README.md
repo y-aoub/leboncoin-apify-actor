@@ -2,15 +2,11 @@
 
 A simple tool to extract Leboncoin listings and turn the French marketplace into structured, usable data.
 
----
-
-## 💡 Why use this tool?
-
 Stop scrolling and copy-pasting. Collect thousands of listings automatically, filter by your exact criteria, and export to JSON or CSV for analysis.
 
-### 🎯 Use cases
+## 🎯 Use cases
 
-✅ Real-estate analysis • Price monitoring • Deal hunting • Competitive watch • Lead generation • Market research
+This tool can be used for: real-estate analysis, price monitoring, deal hunting, competitive watch, lead generation, Market research, etc.
 
 ---
 
@@ -25,7 +21,7 @@ No technical knowledge required.
 
 ---
 
-## 📊 Example Input
+### Example Input
 
 ```json
 {
@@ -47,7 +43,7 @@ No technical knowledge required.
 
 ---
 
-## 📤 Example Output
+### Example Output
 
 ```json
 {
@@ -114,20 +110,13 @@ No technical knowledge required.
 
 ## ✨ Features
 
-- Advanced filters: price, surface, rooms, DPE, mileage, year, fuel, geolocation, keywords
-- Rich export: title, description, price, photos, address, GPS, seller info, metadata
+- Advanced filters: price, surface, rooms, DPE, mileage, year, fuel, geolocation, keywords, etc.
 - Formats: JSON or CSV
 - Performance: 100–200 ads/min, no page limit (set `max_pages = 0`)
 
 ---
 
-## 📋 Supported categories
-
-Real estate • Vehicles • Jobs • Electronics • Home & Garden • Fashion • Leisure • Services
-
----
-
-## FAQ
+## ⁉️QA
 
 - Cost: $39/month — unlimited extraction
 - Legal: public data only. Respect Terms of Service and GDPR
@@ -137,15 +126,9 @@ Real estate • Vehicles • Jobs • Electronics • Home & Garden • Fashion 
 
 ---
 
-## ⚠️ Important
-
-Use responsibly • GDPR compliant • Not affiliated with Leboncoin
-
----
-
 ## 🚀 Ready?
 
 1) Open the "Input" tab → paste your URL(s) → Run  
-2) Get your data in "Dataset"
+2) Get your data in "Output"
 
 Questions? See "Issues".
