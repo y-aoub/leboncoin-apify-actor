@@ -130,4 +130,6 @@ No technical knowledge required.
 
 Open the "Input" tab → paste your URL(s) → Run → Get your data in "Output"
 
-Questions? See "Issues".
+## 🆘 Issues
+
+If you have any questions or encounter any issues, please kindly post them in the "Issues" tab — I will be happy to help and respond as soon as possible 😊!
