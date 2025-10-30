@@ -116,7 +116,7 @@ No technical knowledge required.
 
 ---
 
-## ⁉️QA
+## ⁉️FAQ
 
 - Cost: $39/month — unlimited extraction
 - Legal: public data only. Respect Terms of Service and GDPR
@@ -128,7 +128,6 @@ No technical knowledge required.
 
 ## 🚀 Ready?
 
-1) Open the "Input" tab → paste your URL(s) → Run  
-2) Get your data in "Output"
+Open the "Input" tab → paste your URL(s) → Run → Get your data in "Output"
 
 Questions? See "Issues".
