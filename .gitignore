@@ -45,6 +45,7 @@ storage/
 
 # Streamlit UI
 test_example_urls.py
+test_get_user.py
 
 
 # Output files
