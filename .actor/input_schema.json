@@ -12,6 +12,9 @@
       "items": {
         "type": "string"
       },
+      "prefill": [
+        "https://www.leboncoin.fr/recherche?category=9&locations=Paris&price=250000-400000&rooms=2-4&real_estate_type=2"
+      ],
       "sectionCaption": "🎯 Search URLs",
       "sectionDescription": "Scrape one or multiple searches in a single run"
     },
@@ -21,6 +24,7 @@
       "description": "Maximum number of pages to scrape. Set 0 to scrape all available pages (practical limit of 99999 pages). Recommended: 10-20 to start.",
       "editor": "number",
       "default": 10,
+      "prefill": 10,
       "minimum": 0,
       "sectionCaption": "⚙️ Scraping settings",
       "sectionDescription": "Control volume and scraping speed"
@@ -31,6 +35,7 @@
       "description": "Number of ads to scrape per page (Leboncoin typically displays 35 ads/page)",
       "editor": "number",
       "default": 35,
+      "prefill": 35,
       "minimum": 1,
       "maximum": 100
     },
@@ -40,6 +45,7 @@
       "description": "Wait time between each page (0 = maximum speed recommended)",
       "editor": "number",
       "default": 0,
+      "prefill": 0,
       "minimum": 0,
       "maximum": 5
     },
@@ -49,6 +55,7 @@
       "description": "Ignore ads older than X days (0 = disabled)",
       "editor": "number",
       "default": 0,
+      "prefill": 0,
       "minimum": 0,
       "maximum": 365
     },

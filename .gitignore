@@ -122,3 +122,8 @@ dmypy.json
 Thumbs.db
 .DS_Store
 
+
+# Added by Apify CLI
+storage
+node_modules
+.venv
