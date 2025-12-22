@@ -90,6 +90,10 @@ class Config:
         self.max_age_days = input_data.get("max_age_days", 0)  # 0 = disabled
         self.consecutive_old_limit = 5
         
+        # Price interval splitting (to avoid 100-page limit)
+        self.price_interval_size = input_data.get("price_interval_size", 50000)  # Default: 50k euros
+        self.split_price_intervals = input_data.get("split_price_intervals", True)  # Enable by default
+        
         # Proxy settings (Apify ProxyConfiguration)
         self.proxy_configuration = input_data.get("proxyConfiguration")
         
@@ -135,6 +139,207 @@ class Logger:
         return logger
 
 
+
+
+# ============================================================================
+# PRICE INTERVAL SPLITTER
+# ============================================================================
+
+class PriceIntervalSplitter:
+    """Split price intervals into smaller sub-intervals to avoid 100-page limit."""
+    
+    # Default interval size (in euros) - can be configured
+    DEFAULT_INTERVAL_SIZE = 50000  # 50k euros per interval
+    
+    @staticmethod
+    def split_price_interval(min_price: int, max_price: int, interval_size: Optional[int] = None) -> List[tuple[int, int]]:
+        """
+        Split a price range into smaller intervals.
+        
+        Args:
+            min_price: Minimum price (0 if None)
+            max_price: Maximum price (9999999 if None)
+            interval_size: Size of each interval in euros (default: 50000)
+            
+        Returns:
+            List of (min, max) tuples for each sub-interval
+        """
+        if interval_size is None:
+            interval_size = PriceIntervalSplitter.DEFAULT_INTERVAL_SIZE
+        
+        intervals = []
+        current_min = min_price
+        
+        while current_min < max_price:
+            current_max = min(current_min + interval_size, max_price)
+            intervals.append((current_min, current_max))
+            current_min = current_max
+        
+        return intervals
+    
+    @staticmethod
+    def extract_price_from_url(url: str) -> Optional[tuple[Optional[int], Optional[int]]]:
+        """
+        Extract price range from URL.
+        
+        Args:
+            url: Leboncoin search URL
+            
+        Returns:
+            Tuple of (min_price, max_price) or None if no price parameter
+            Values can be None for 'min' or 'max' keywords
+        """
+        try:
+            from urllib.parse import unquote
+            
+            if '?' not in url:
+                return None
+            
+            query_string = url.split('?')[1]
+            args = query_string.split('&')
+            
+            for arg in args:
+                if '=' not in arg:
+                    continue
+                
+                key, value = arg.split('=', 1)
+                value = unquote(value)
+                
+                if key == "price":
+                    # Parse price value
+                    if '-' in value and len(value.split('-')) == 2:
+                        range_parts = value.split('-')
+                        try:
+                            if range_parts[0] == 'min':
+                                # Format: "min-1600"
+                                max_val = int(range_parts[1])
+                                return (None, max_val)
+                            elif range_parts[1] == 'max':
+                                # Format: "2020-max"
+                                min_val = int(range_parts[0])
+                                return (min_val, None)
+                            else:
+                                # Format: "100-200"
+                                min_val = int(range_parts[0])
+                                max_val = int(range_parts[1])
+                                return (min_val, max_val)
+                        except ValueError:
+                            return None
+                    else:
+                        # Single price value (not a range)
+                        try:
+                            price = int(value)
+                            return (price, price)
+                        except ValueError:
+                            return None
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    @staticmethod
+    def generate_urls_with_price_intervals(base_url: str, interval_size: Optional[int] = None) -> List[str]:
+        """
+        Generate multiple URLs by splitting price interval into sub-intervals.
+        
+        Args:
+            base_url: Original Leboncoin search URL
+            interval_size: Size of each price interval in euros (default: 50000)
+            
+        Returns:
+            List of URLs with different price intervals, or [base_url] if no price parameter
+        """
+        price_range = PriceIntervalSplitter.extract_price_from_url(base_url)
+        
+        if price_range is None:
+            # No price parameter, return original URL
+            return [base_url]
+        
+        original_min, original_max = price_range
+        
+        # Set defaults for min/max
+        actual_min = original_min if original_min is not None else 0
+        actual_max = original_max if original_max is not None else 10000000  # 10M euros as practical max
+        
+        # If interval is too small, don't split
+        if actual_max - actual_min <= (interval_size or PriceIntervalSplitter.DEFAULT_INTERVAL_SIZE):
+            return [base_url]
+        
+        # Split into intervals
+        intervals = PriceIntervalSplitter.split_price_interval(actual_min, actual_max, interval_size)
+        
+        # Generate URLs for each interval
+        urls = []
+        for i, (interval_min, interval_max) in enumerate(intervals):
+            # For first interval: preserve original min if it was "min"
+            # For last interval: preserve original max if it was "max"
+            new_min = None if (i == 0 and original_min is None) else interval_min
+            new_max = None if (i == len(intervals) - 1 and original_max is None) else interval_max
+            
+            new_url = PriceIntervalSplitter._replace_price_in_url(
+                base_url, 
+                new_min,
+                new_max
+            )
+            urls.append(new_url)
+        
+        return urls
+    
+    @staticmethod
+    def _replace_price_in_url(url: str, new_min: Optional[int], new_max: Optional[int]) -> str:
+        """
+        Replace price parameter in URL with new values.
+        
+        Args:
+            url: Original URL
+            new_min: New minimum price (None for 'min')
+            new_max: New maximum price (None for 'max')
+            
+        Returns:
+            URL with updated price parameter
+        """
+        from urllib.parse import unquote, quote
+        
+        if '?' not in url:
+            return url
+        
+        base_url = url.split('?')[0]
+        query_string = url.split('?')[1]
+        args = query_string.split('&')
+        
+        new_args = []
+        price_replaced = False
+        
+        for arg in args:
+            if '=' not in arg:
+                new_args.append(arg)
+                continue
+            
+            key, value = arg.split('=', 1)
+            
+            if key == "price":
+                # Replace price parameter
+                if new_min is None and new_max is None:
+                    # Should not happen, but keep original
+                    new_args.append(arg)
+                elif new_min is None:
+                    # Format: "min-max_value"
+                    new_args.append(f"price={quote(f'min-{new_max}')}")
+                elif new_max is None:
+                    # Format: "min_value-max"
+                    new_args.append(f"price={quote(f'{new_min}-max')}")
+                else:
+                    # Format: "min_value-max_value"
+                    new_args.append(f"price={quote(f'{new_min}-{new_max}')}")
+                price_replaced = True
+            else:
+                new_args.append(arg)
+        
+        # Note: We should never add price if it didn't exist (this function is only called
+        # when price already exists in the URL, so price_replaced should always be True)
+        
+        return f"{base_url}?{'&'.join(new_args)}"
 
 
 # ============================================================================
@@ -877,11 +1082,26 @@ class ScraperEngine:
         # Check if multiple URLs mode
         all_ads = []
         if self.config.urls_list:
-            # Multiple URLs mode
-            self.logger.info(f"Processing {len(self.config.urls_list)} URLs")
+            # Expand URLs by splitting price intervals if enabled
+            expanded_urls = []
+            for url in self.config.urls_list:
+                if self.config.split_price_intervals:
+                    # Split price intervals to avoid 100-page limit
+                    split_urls = PriceIntervalSplitter.generate_urls_with_price_intervals(
+                        url, 
+                        self.config.price_interval_size
+                    )
+                    if len(split_urls) > 1:
+                        self.logger.info(f"Price interval detected: splitting into {len(split_urls)} sub-intervals")
+                    expanded_urls.extend(split_urls)
+                else:
+                    expanded_urls.append(url)
             
-            for idx, url in enumerate(self.config.urls_list, 1):
-                self.logger.info(f"Processing URL {idx}/{len(self.config.urls_list)}: {url}")
+            # Multiple URLs mode (now with expanded price intervals)
+            self.logger.info(f"Processing {len(expanded_urls)} URLs ({len(self.config.urls_list)} original, {len(expanded_urls) - len(self.config.urls_list)} from price splitting)")
+            
+            for idx, url in enumerate(expanded_urls, 1):
+                self.logger.info(f"Processing URL {idx}/{len(expanded_urls)}: {url}")
                 
                 # Parse URL to search args
                 search_args = LeboncoinURLParser.parse_url_to_search_config(url)
@@ -908,7 +1128,7 @@ class ScraperEngine:
                 self.config.direct_url = original_direct_url
                 
                 # Small delay between URLs
-                if idx < len(self.config.urls_list) and self.config.delay_between_pages > 0:
+                if idx < len(expanded_urls) and self.config.delay_between_pages > 0:
                     await asyncio.sleep(self.config.delay_between_pages)
         
         if not self.config.urls_list:
