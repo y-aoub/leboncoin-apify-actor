@@ -1,4 +1,4 @@
-# 🏠 Leboncoin Scraper
+# 🕸️ Leboncoin Scraper
 
 A simple tool to extract Leboncoin listings and turn the French marketplace into structured, usable data.
 
