@@ -12,50 +12,6 @@
   "dockerfile": "./Dockerfile",
   "readme": "./README.md",
   "storages": {
-    "dataset": {
-      "actorSpecification": 1,
-      "title": "Leboncoin Ads Dataset",
-      "views": {
-        "overview": {
-          "title": "Overview",
-          "transformation": {
-            "fields": [
-              "id",
-              "url",
-              "subject",
-              "price",
-              "city",
-              "zipcode",
-              "index_date"
-            ]
-          },
-          "display": {
-            "component": "table",
-            "properties": {
-              "id": {
-                "label": "ID",
-                "format": "text"
-              },
-              "subject": {
-                "label": "Title",
-                "format": "text"
-              },
-              "price": {
-                "label": "Price (€)",
-                "format": "number"
-              },
-              "city": {
-                "label": "City",
-                "format": "text"
-              },
-              "url": {
-                "label": "URL",
-                "format": "link"
-              }
-            }
-          }
-        }
-      }
-    }
+    "dataset": "./dataset_schema.json"
   }
 }
