@@ -1,8 +1,9 @@
 {
   "actorSpecification": 1,
   "name": "leboncoin-universal-scraper",
-  "title": "Leboncoin Universal Scraper",
-  "description": "Extract unlimited Leboncoin listings automatically. Simply paste your search URL and get structured data in minutes. Perfect for market analysis, price monitoring, and lead generation.",
+  "title": "Leboncoin Scraper - Real Estate, Cars & Classifieds",
+  "description": "Leboncoin scraper for listings, real estate, cars & classifieds. Extract price, location, images, dates & seller data from any search URL. Export to JSON/CSV — no code, no Leboncoin API key.",
+  "categories": ["REAL_ESTATE", "ECOMMERCE", "LEAD_GENERATION"],
   "version": "1.0.0",
   "meta": {
     "templateId": "python-start"
