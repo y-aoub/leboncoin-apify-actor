@@ -1,6 +1,6 @@
 {
   "title": "Leboncoin Scraper",
-  "description": "Scrape Leboncoin listings from search URLs",
+  "description": "Scrape Leboncoin listings (real estate, cars, classifieds) from any search URL",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
