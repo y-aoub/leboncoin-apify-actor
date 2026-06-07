@@ -42,12 +42,20 @@
     "delay_between_pages": {
       "title": "Delay between pages (seconds)",
       "type": "number",
-      "description": "Wait time between each page (0 = maximum speed recommended)",
+      "description": "Wait time between each page (0 = maximum speed recommended). Note: setting a delay disables parallel fetching and scrapes pages one by one.",
       "editor": "number",
       "default": 0,
       "prefill": 0,
       "minimum": 0,
       "maximum": 5
+    },
+    "concurrency": {
+      "title": "Concurrency (parallel pages)",
+      "type": "integer",
+      "description": "Number of pages to fetch in parallel for much faster runs. Each worker uses an isolated session. Leave empty for the default (3). Higher values are faster but increase the risk of anti-bot blocking. Ignored when a per-page delay or max ad age is set.",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 30
     },
     "max_age_days": {
       "title": "Max ad age (days)",
@@ -58,18 +66,6 @@
       "prefill": 0,
       "minimum": 0,
       "maximum": 365
-    },
-    "proxyConfiguration": {
-      "title": "Proxy configuration",
-      "type": "object",
-      "description": "Use proxies to avoid blocking (recommended for high volume)",
-      "editor": "proxy",
-      "sectionCaption": "🔒 Anti-blocking protection",
-      "prefill": {
-        "useApifyProxy": true,
-        "apifyProxyGroups": ["RESIDENTIAL"],
-        "apifyProxyCountry": "FR"
-      }
     }
   },
   "required": ["urls_list"]
