@@ -27,16 +27,11 @@ No technical knowledge required.
 {
   "max_age_days": 0,
   "max_pages": 0,
-  "proxyConfiguration": {
-    "useApifyProxy": false,
-    "proxyUrls": [
-      "http://LOGIN:PASSWORD@HOST:PORT"
-    ]
-  },
   "urls_list": [
     "https://www.leboncoin.fr/recherche?category=9&locations=Paris&price=250000-400000&rooms=2-4&real_estate_type=2"
   ],
   "limit_per_page": 35,
+  "concurrency": 3,
   "delay_between_pages": 0
 }
 ```
@@ -113,7 +108,7 @@ No technical knowledge required.
 - Advanced filters: price, surface, rooms, DPE, mileage, year, fuel, geolocation, keywords, etc.
 - Formats: JSON or CSV
 - Performance: parallel page fetching for fast runs, no page limit (set `max_pages = 0`)
-- Tunable speed: control parallelism with `concurrency` (smart default: 8 with a proxy, 3 without)
+- Tunable speed: control parallelism with `concurrency` (default: 3)
 
 ---
 
@@ -121,7 +116,6 @@ No technical knowledge required.
 
 - Cost: $39/month — unlimited extraction
 - Legal: public data only. Respect Terms of Service and GDPR
-- Blocking: FR residential proxies recommended for high volume
 - Freshness: data is collected at runtime
 - Automation: integrates with Apify API and workflows
 

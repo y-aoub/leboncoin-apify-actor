@@ -52,7 +52,7 @@
     "concurrency": {
       "title": "Concurrency (parallel pages)",
       "type": "integer",
-      "description": "Number of pages to fetch in parallel for much faster runs. Each worker uses an isolated session (and a separate rotating proxy IP when a proxy is enabled). Leave empty for a smart default (8 with a proxy, 3 without). Higher values are faster but increase blocking risk without proxies. Ignored when a per-page delay or max ad age is set.",
+      "description": "Number of pages to fetch in parallel for much faster runs. Each worker uses an isolated session. Leave empty for the default (3). Higher values are faster but increase the risk of anti-bot blocking. Ignored when a per-page delay or max ad age is set.",
       "editor": "number",
       "minimum": 1,
       "maximum": 30
@@ -66,18 +66,6 @@
       "prefill": 0,
       "minimum": 0,
       "maximum": 365
-    },
-    "proxyConfiguration": {
-      "title": "Proxy configuration",
-      "type": "object",
-      "description": "Use proxies to avoid blocking (recommended for high volume)",
-      "editor": "proxy",
-      "sectionCaption": "🔒 Anti-blocking protection",
-      "prefill": {
-        "useApifyProxy": true,
-        "apifyProxyGroups": ["RESIDENTIAL"],
-        "apifyProxyCountry": "FR"
-      }
     }
   },
   "required": ["urls_list"]
