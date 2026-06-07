@@ -85,6 +85,18 @@ class Config:
         self.max_pages = input_data.get("max_pages", 10)
         self.limit_per_page = input_data.get("limit_per_page", 35)
         self.delay_between_pages = input_data.get("delay_between_pages", 0)  # 0 = no delay for max speed
+
+        # Concurrency (parallel page fetching). Each worker uses its own isolated
+        # client/session (and its own rotating proxy IP when a proxy is configured),
+        # so this is safe. Default is conservative without a proxy to avoid anti-bot
+        # blocking, and higher with a proxy since load is spread across IPs.
+        default_concurrency = 8 if input_data.get("proxyConfiguration") else 3
+        try:
+            self.concurrency = int(input_data.get("concurrency", default_concurrency))
+        except (TypeError, ValueError):
+            self.concurrency = default_concurrency
+        # Clamp to a sane range
+        self.concurrency = max(1, min(self.concurrency, 30))
         
         # Age filtering
         self.max_age_days = input_data.get("max_age_days", 0)  # 0 = disabled
@@ -843,6 +855,7 @@ class ScraperEngine:
         self.config = config
         self.logger = logger
         self.client = None
+        self.clients = []  # Pool of isolated clients for concurrent page fetching
         self.seen_ids = set()
         self.total_ads_available = None  # Total ads available on Leboncoin
         self.stats = {
@@ -854,26 +867,9 @@ class ScraperEngine:
             "errors": 0
         }
     
-    async def initialize_client(self) -> None:
-        """Initialize Leboncoin client with optional Apify proxy."""
-        proxy_url = None
-        
-        # Try to use Apify ProxyConfiguration
-        if self.config.proxy_configuration:
-            try:
-                from apify import Actor
-                proxy_config = await Actor.create_proxy_configuration(
-                    actor_proxy_input=self.config.proxy_configuration
-                )
-                if proxy_config:
-                    proxy_url = await proxy_config.new_url()
-                    self.logger.info("Proxy configured successfully")
-            except Exception as e:
-                self.logger.error(f"Failed to configure proxy: {e}")
-        
-        # Initialize client with or without proxy
+    def _build_client(self, proxy_url: Optional[str]) -> "lbc.Client":
+        """Build a single lbc.Client (blocking - does a cookie-init request)."""
         if proxy_url:
-            # Parse proxy URL to extract components for lbc.Proxy
             from urllib.parse import urlparse
             parsed = urlparse(proxy_url)
             proxy = lbc.Proxy(
@@ -882,12 +878,81 @@ class ScraperEngine:
                 username=parsed.username,
                 password=parsed.password
             )
-            self.client = lbc.Client(proxy=proxy)
-            self.logger.info("Leboncoin client initialized with proxy")
-        else:
-            self.client = lbc.Client()
-            self.logger.info("Leboncoin client initialized without proxy")
-    
+            return lbc.Client(proxy=proxy)
+        return lbc.Client()
+
+    async def initialize_client(self) -> None:
+        """
+        Initialize a pool of Leboncoin clients for concurrent page fetching.
+
+        Each client owns an isolated session (curl_cffi sessions are not safe for
+        concurrent use, and the lbc 403-retry swaps the session), so a worker must
+        never share a client. When a proxy is configured we request a fresh URL per
+        client, spreading load across rotating IPs. Clients are created concurrently
+        so the cookie-init requests overlap instead of running back-to-back.
+        """
+        pool_size = max(1, self.config.concurrency)
+
+        # Resolve one proxy URL per client (None means direct connection).
+        proxy_urls: List[Optional[str]] = [None] * pool_size
+        if self.config.proxy_configuration:
+            try:
+                from apify import Actor
+                proxy_config = await Actor.create_proxy_configuration(
+                    actor_proxy_input=self.config.proxy_configuration
+                )
+                if proxy_config:
+                    proxy_urls = [await proxy_config.new_url() for _ in range(pool_size)]
+                    self.logger.info("Proxy configured successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to configure proxy: {e}")
+
+        # Build clients concurrently (each constructor performs a blocking request).
+        built = await asyncio.gather(
+            *[asyncio.to_thread(self._build_client, purl) for purl in proxy_urls],
+            return_exceptions=True
+        )
+        self.clients = [c for c in built if isinstance(c, lbc.Client)]
+
+        # Fallback: ensure we always have at least one working client.
+        if not self.clients:
+            self.clients = [self._build_client(None)]
+
+        self.client = self.clients[0]
+        using_proxy = any(purl for purl in proxy_urls)
+        self.logger.info(
+            f"Initialized {len(self.clients)} client(s) "
+            f"{'with proxy' if using_proxy else 'without proxy'}"
+        )
+
+    def _build_search_context(self, search_args: Dict[str, Any], search_url: Optional[str]) -> Dict[str, Any]:
+        """Build the static per-page search context attached to each ad."""
+        category_name = "Unknown"
+        location_name = "Unknown"
+
+        category = search_args.get('category')
+        if category:
+            if hasattr(category, 'name'):
+                category_name = category.name
+            elif hasattr(category, 'value'):
+                category_name = category.value
+            elif isinstance(category, str):
+                category_name = category
+
+        locations = search_args.get('locations', [])
+        if locations and len(locations) > 0:
+            first_loc = locations[0]
+            if hasattr(first_loc, 'city'):
+                location_name = first_loc.city
+            elif hasattr(first_loc, 'name'):
+                location_name = first_loc.name
+
+        return {
+            "category": category_name,
+            "location": location_name,
+            "search_url": search_url if search_url else "Unknown"
+        }
+
     
     def _scrape_single_page(self, page_num: int, search_url: str = None) -> tuple[List[Dict[str, Any]], bool]:
         """
@@ -920,37 +985,10 @@ class ScraperEngine:
             
             page_ads = []
             old_ads_count = 0
-            
+
             # Static search context (reused for all ads on this page)
-            # Extract category and location from search args
-            category_name = "Unknown"
-            location_name = "Unknown"
-            
-            if hasattr(search_args, 'get'):
-                category = search_args.get('category')
-                if category:
-                    if hasattr(category, 'name'):
-                        category_name = category.name
-                    elif hasattr(category, 'value'):
-                        category_name = category.value
-                    elif isinstance(category, str):
-                        category_name = category
-                
-                # Try to get location from locations array
-                locations = search_args.get('locations', [])
-                if locations and len(locations) > 0:
-                    first_loc = locations[0]
-                    if hasattr(first_loc, 'city'):
-                        location_name = first_loc.city
-                    elif hasattr(first_loc, 'name'):
-                        location_name = first_loc.name
-            
-            search_context = {
-                "category": category_name, 
-                "location": location_name,
-                "search_url": search_url if search_url else "Unknown"
-            }
-            
+            search_context = self._build_search_context(search_args, search_url)
+
             # Process ads
             for ad in result.ads:
                 # Fast validation
@@ -1011,19 +1049,186 @@ class ScraperEngine:
             self.stats["errors"] += 1
             return [], True
 
+    def _fetch_and_transform_page(
+        self, client: "lbc.Client", page_num: int, search_url: Optional[str]
+    ) -> tuple[List[Dict[str, Any]], Optional[int], Optional[int], bool]:
+        """
+        Fetch and transform a single page WITHOUT touching shared mutable state.
+
+        Runs inside a worker thread (via asyncio.to_thread), so it must not mutate
+        self.seen_ids/self.stats (deduplication and counting happen in the single
+        async coordinator). Returns (candidate_ads, total, max_pages, ok).
+        """
+        try:
+            search_args = self.config.search_args.copy()
+            search_args['page'] = page_num
+            search_args['limit'] = self.config.limit_per_page
+
+            result = client.search(**search_args)
+
+            total = getattr(result, 'total', None)
+            result_max_pages = getattr(result, 'max_pages', None)
+
+            if not getattr(result, 'ads', None):
+                return [], total, result_max_pages, True
+
+            search_context = self._build_search_context(search_args, search_url)
+
+            candidates: List[Dict[str, Any]] = []
+            for ad in result.ads:
+                if not getattr(ad, 'id', None):
+                    continue
+                try:
+                    candidates.append(AdTransformer.create_detailed_ad(ad, search_context))
+                except Exception:
+                    self.stats["errors"] += 1
+
+            return candidates, total, result_max_pages, True
+
+        except Exception as e:
+            error_msg = str(e)
+            if "Datadome" in error_msg:
+                self.logger.error(f"Access blocked by Datadome (anti-bot) on page {page_num}")
+            else:
+                self.logger.error(f"Failed to scrape page {page_num}: {error_msg}")
+            self.stats["errors"] += 1
+            return [], None, None, False
+
+    def _dedup_and_collect(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Deduplicate candidate ads against seen_ids (single-threaded, safe)."""
+        new_ads = []
+        for ad_data in candidates:
+            ad_id = ad_data.get("id")
+            if ad_id is None:
+                continue
+            if ad_id in self.seen_ids:
+                self.stats["duplicates"] += 1
+                continue
+            self.seen_ids.add(ad_id)
+            new_ads.append(ad_data)
+        return new_ads
+
+    async def _scrape_from_url_concurrent(self, max_pages: int) -> List[Dict[str, Any]]:
+        """
+        Scrape pages in parallel using the client pool.
+
+        Page 1 is fetched first to learn the real number of available pages, then
+        the remaining pages are fetched concurrently. Each in-flight request holds
+        one client from the pool (so no session is used concurrently). Deduplication,
+        stats and dataset pushes happen in this coordinator only.
+        """
+        all_ads: List[Dict[str, Any]] = []
+        batch_ads: List[Dict[str, Any]] = []
+        batch_threshold = 10 * self.config.limit_per_page  # same batching as sequential
+        search_url = self.config.direct_url
+
+        self.logger.info(f"Starting concurrent scraping ({len(self.clients)} workers)")
+
+        # --- Page 1: discover total pages ---
+        candidates, total, result_max_pages, ok = await asyncio.to_thread(
+            self._fetch_and_transform_page, self.clients[0], 1, search_url
+        )
+        if not ok:
+            if batch_ads:
+                await ApifyAdapter.push_data(batch_ads)
+            return all_ads
+
+        if total is not None and result_max_pages is not None:
+            self.total_ads_available = total
+            self.logger.info(f"Found {total} ads in {result_max_pages} pages")
+
+        first_new = self._dedup_and_collect(candidates)
+        if first_new:
+            all_ads.extend(first_new)
+            batch_ads.extend(first_new)
+            self.stats["total_ads"] += len(first_new)
+            self.stats["unique_ads"] += len(first_new)
+            self.stats["pages_processed"] += 1
+            self.logger.info(f"Page 1: {len(first_new)} ads extracted")
+
+        # Determine the last page to fetch (bounded by what the API actually offers).
+        last_page = max_pages
+        if result_max_pages:
+            last_page = min(max_pages, result_max_pages)
+
+        # Nothing more to fetch (empty first page or single-page result).
+        if not candidates or last_page <= 1:
+            if batch_ads:
+                await ApifyAdapter.push_data(batch_ads)
+            if self.total_ads_available is not None:
+                self.logger.info(f"Total ads available: {self.total_ads_available} | Scraped: {len(all_ads)} from {self.stats['pages_processed']} pages")
+            else:
+                self.logger.info(f"Scraping completed: {len(all_ads)} ads extracted from {self.stats['pages_processed']} pages")
+            return all_ads
+
+        # --- Pages 2..last_page: concurrent ---
+        client_queue: asyncio.Queue = asyncio.Queue()
+        for client in self.clients:
+            client_queue.put_nowait(client)
+
+        async def fetch_page(page_num: int):
+            client = await client_queue.get()
+            try:
+                return page_num, await asyncio.to_thread(
+                    self._fetch_and_transform_page, client, page_num, search_url
+                )
+            finally:
+                client_queue.put_nowait(client)
+
+        tasks = [asyncio.create_task(fetch_page(p)) for p in range(2, last_page + 1)]
+
+        # Process results as they complete (incremental pushes, bounded memory).
+        for coro in asyncio.as_completed(tasks):
+            page_num, (cands, _t, _mp, page_ok) = await coro
+            if not page_ok:
+                continue
+            new_ads = self._dedup_and_collect(cands)
+            if new_ads:
+                all_ads.extend(new_ads)
+                batch_ads.extend(new_ads)
+                self.stats["total_ads"] += len(new_ads)
+                self.stats["unique_ads"] += len(new_ads)
+                self.stats["pages_processed"] += 1
+                self.logger.info(f"Page {page_num}: {len(new_ads)} ads extracted")
+
+            if len(batch_ads) >= batch_threshold:
+                await ApifyAdapter.push_data(batch_ads)
+                batch_ads = []
+
+        if batch_ads:
+            await ApifyAdapter.push_data(batch_ads)
+
+        if self.total_ads_available is not None:
+            self.logger.info(f"Total ads available: {self.total_ads_available} | Scraped: {len(all_ads)} from {self.stats['pages_processed']} pages")
+        else:
+            self.logger.info(f"Scraping completed: {len(all_ads)} ads extracted from {self.stats['pages_processed']} pages")
+        return all_ads
+
     async def scrape_from_url(self) -> List[Dict[str, Any]]:
         """Scrape using search arguments (sequential, optimized for speed)."""
         all_ads = []
-        
+
         # If max_pages is 0, scrape all available pages (practically unlimited)
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 99999
-        
+
         # Validate search arguments
         if not self.config.search_args:
             self.logger.error("No search arguments provided")
             self.stats["errors"] += 1
             return all_ads
-        
+
+        # Use the concurrent path when it is safe to reorder/parallelize pages:
+        #   - more than one client/worker is available, AND
+        #   - no per-page delay is requested (delay implies deliberate rate limiting), AND
+        #   - age filtering is disabled (it relies on strict sequential early-stop).
+        # Otherwise fall back to the original sequential scraper (unchanged behavior).
+        if (
+            len(self.clients) > 1
+            and self.config.delay_between_pages <= 0
+            and self.config.max_age_days <= 0
+        ):
+            return await self._scrape_from_url_concurrent(max_pages)
+
         self.logger.info("Search arguments validated - will be passed directly to lbc library")
 
         # Sequential scraping - optimized batching

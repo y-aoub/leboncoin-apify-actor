@@ -112,7 +112,8 @@ No technical knowledge required.
 
 - Advanced filters: price, surface, rooms, DPE, mileage, year, fuel, geolocation, keywords, etc.
 - Formats: JSON or CSV
-- Performance: 100–200 ads/min, no page limit (set `max_pages = 0`)
+- Performance: parallel page fetching for fast runs, no page limit (set `max_pages = 0`)
+- Tunable speed: control parallelism with `concurrency` (smart default: 8 with a proxy, 3 without)
 
 ---
 
