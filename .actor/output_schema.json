@@ -1,0 +1,18 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Leboncoin Scraper output",
+  "properties": {
+    "listings": {
+      "type": "string",
+      "title": "Scraped listings (dataset)",
+      "description": "All Leboncoin listings extracted by this run.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "summary": {
+      "type": "string",
+      "title": "Run summary",
+      "description": "Run stats and configuration stored under the OUTPUT key.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}
