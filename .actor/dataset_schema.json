@@ -1,0 +1,62 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "title": "Leboncoin ad",
+    "type": "object",
+    "description": "A single Leboncoin listing extracted from a search.",
+    "properties": {
+      "id": { "type": ["integer", "null"], "description": "Unique Leboncoin listing ID" },
+      "subject": { "type": ["string", "null"], "description": "Listing title" },
+      "body": { "type": ["string", "null"], "description": "Full description text" },
+      "price": { "type": ["number", "null"], "description": "Price in euros" },
+      "url": { "type": ["string", "null"], "description": "Direct link to the listing" },
+      "ad_type": { "type": ["string", "null"], "description": "offer or demand" },
+      "brand": { "type": ["string", "null"], "description": "Source brand (leboncoin)" },
+      "status": { "type": ["string", "null"], "description": "Listing status" },
+      "category_id": { "type": ["string", "null"], "description": "Leboncoin category ID" },
+      "category_name": { "type": ["string", "null"], "description": "Leboncoin category name" },
+      "first_publication_date": { "type": ["string", "null"], "description": "First publication date" },
+      "index_date": { "type": ["string", "null"], "description": "Last update date" },
+      "expiration_date": { "type": ["string", "null"], "description": "Expiration date" },
+      "images": { "type": ["array", "null"], "description": "Image URLs" },
+      "attributes": { "type": ["array", "null"], "description": "Category-specific attributes (surface, rooms, mileage, fuel, year, DPE...)" },
+      "location": { "type": ["object", "null"], "description": "City, zipcode, department, region and GPS coordinates" },
+      "has_phone": { "type": ["boolean", "null"], "description": "Whether the seller published a phone number" },
+      "favorites": { "type": ["integer", "null"], "description": "Number of times the ad was favorited" },
+      "scraped_at": { "type": ["string", "null"], "description": "Extraction timestamp" },
+      "search_category": { "type": ["string", "null"], "description": "Category of the source search" },
+      "search_location": { "type": ["string", "null"], "description": "Location of the source search" },
+      "search_url": { "type": ["string", "null"], "description": "The search URL this ad came from" }
+    }
+  },
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "description": "Key fields for each Leboncoin listing",
+      "transformation": {
+        "flatten": ["location"],
+        "fields": [
+          "id",
+          "subject",
+          "price",
+          "location.city",
+          "location.zipcode",
+          "index_date",
+          "url"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "id": { "label": "ID", "format": "text" },
+          "subject": { "label": "Title", "format": "text" },
+          "price": { "label": "Price (€)", "format": "number" },
+          "location.city": { "label": "City", "format": "text" },
+          "location.zipcode": { "label": "Zipcode", "format": "text" },
+          "index_date": { "label": "Updated", "format": "text" },
+          "url": { "label": "URL", "format": "link" }
+        }
+      }
+    }
+  }
+}

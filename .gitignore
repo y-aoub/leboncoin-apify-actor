@@ -54,6 +54,7 @@ test_get_user.py
 !apify_input_example.json
 !.actor/actor.json
 !.actor/input_schema.json
+!.actor/dataset_schema.json
 *.csv
 *.log
 
