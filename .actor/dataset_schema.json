@@ -12,15 +12,52 @@
       "url": { "type": ["string", "null"], "description": "Direct link to the listing" },
       "ad_type": { "type": ["string", "null"], "description": "offer or demand" },
       "brand": { "type": ["string", "null"], "description": "Source brand (leboncoin)" },
-      "status": { "type": ["string", "null"], "description": "Listing status" },
+      "status": { "type": ["string", "null"], "description": "Listing status (e.g. active)" },
       "category_id": { "type": ["string", "null"], "description": "Leboncoin category ID" },
       "category_name": { "type": ["string", "null"], "description": "Leboncoin category name" },
-      "first_publication_date": { "type": ["string", "null"], "description": "First publication date" },
-      "index_date": { "type": ["string", "null"], "description": "Last update date" },
+      "first_publication_date": { "type": ["string", "null"], "description": "First publication date (YYYY-MM-DD HH:MM:SS)" },
+      "index_date": { "type": ["string", "null"], "description": "Last update date (YYYY-MM-DD HH:MM:SS)" },
       "expiration_date": { "type": ["string", "null"], "description": "Expiration date" },
-      "images": { "type": ["array", "null"], "description": "Image URLs" },
-      "attributes": { "type": ["array", "null"], "description": "Category-specific attributes (surface, rooms, mileage, fuel, year, DPE...)" },
-      "location": { "type": ["object", "null"], "description": "City, zipcode, department, region and GPS coordinates" },
+      "images": {
+        "type": ["array", "null"],
+        "description": "Image URLs",
+        "items": { "type": ["string", "null"] }
+      },
+      "attributes": {
+        "type": ["array", "null"],
+        "description": "Category-specific attributes (surface, rooms, mileage, fuel, year, DPE...)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "key": { "type": ["string", "null"], "description": "Attribute key (e.g. rooms, square, mileage)" },
+            "key_label": { "type": ["string", "null"], "description": "Human-readable attribute name" },
+            "value": { "type": ["string", "null"], "description": "Raw attribute value" },
+            "value_label": { "type": ["string", "null"], "description": "Human-readable attribute value" },
+            "values": { "type": ["array", "null"], "items": { "type": ["string", "null"] }, "description": "Multiple raw values" },
+            "values_label": { "type": ["array", "null"], "items": { "type": ["string", "null"] }, "description": "Multiple human-readable values" },
+            "generic": { "type": ["boolean", "null"], "description": "Whether the attribute is generic" }
+          }
+        }
+      },
+      "location": {
+        "type": ["object", "null"],
+        "description": "Geographic information for the listing",
+        "properties": {
+          "country_id": { "type": ["string", "null"] },
+          "region_id": { "type": ["string", "null"] },
+          "region_name": { "type": ["string", "null"] },
+          "department_id": { "type": ["string", "null"] },
+          "department_name": { "type": ["string", "null"] },
+          "city_label": { "type": ["string", "null"] },
+          "city": { "type": ["string", "null"] },
+          "zipcode": { "type": ["string", "null"] },
+          "lat": { "type": ["number", "null"], "description": "Latitude" },
+          "lng": { "type": ["number", "null"], "description": "Longitude" },
+          "source": { "type": ["string", "null"] },
+          "provider": { "type": ["string", "null"] },
+          "is_shape": { "type": ["boolean", "null"] }
+        }
+      },
       "has_phone": { "type": ["boolean", "null"], "description": "Whether the seller published a phone number" },
       "favorites": { "type": ["integer", "null"], "description": "Number of times the ad was favorited" },
       "scraped_at": { "type": ["string", "null"], "description": "Extraction timestamp" },
@@ -39,6 +76,7 @@
           "id",
           "subject",
           "price",
+          "category_name",
           "location.city",
           "location.zipcode",
           "index_date",
@@ -51,6 +89,7 @@
           "id": { "label": "ID", "format": "text" },
           "subject": { "label": "Title", "format": "text" },
           "price": { "label": "Price (€)", "format": "number" },
+          "category_name": { "label": "Category", "format": "text" },
           "location.city": { "label": "City", "format": "text" },
           "location.zipcode": { "label": "Zipcode", "format": "text" },
           "index_date": { "label": "Updated", "format": "text" },
