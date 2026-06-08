@@ -33,6 +33,11 @@ class ApifyIO:
     LOCAL_DATASET = "apify_output.json"
     LOCAL_OUTPUT = "scraper_results.json"
 
+    # Pay-per-event event names (must match the events configured in the
+    # Apify Console monetization settings). Prices are set there, not in code.
+    EVENT_ACTOR_START = "actor-start"
+    EVENT_RESULT = "listing-scraped"
+
     @staticmethod
     async def get_input() -> Dict[str, Any]:
         """Load the actor input."""
@@ -70,6 +75,23 @@ class ApifyIO:
         else:
             with open(ApifyIO.LOCAL_OUTPUT, "w", encoding="utf-8") as f:
                 json.dump(value, f, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    async def charge(event_name: str, count: int = 1) -> bool:
+        """
+        Charge a pay-per-event event; return True if its budget limit is reached.
+
+        No-op off-platform (local runs) or when the Actor isn't on a pay-per-event
+        pricing model. Never raises — billing problems must not crash a scrape.
+        """
+        if not _HAS_APIFY or count <= 0:
+            return False
+        try:
+            result = await Actor.charge(event_name=event_name, count=count)
+            return bool(getattr(result, "event_charge_limit_reached", False))
+        except Exception:
+            # e.g. SDK too old, or Actor not on a pay-per-event plan.
+            return False
 
 
 class _DatasetBatcher:
@@ -796,6 +818,7 @@ class ScraperEngine:
         self.clients: List["lbc.Client"] = []  # Isolated clients for concurrent fetching.
         self.seen_ids = set()
         self.total_ads_available: Optional[int] = None  # Total ads reported by Leboncoin.
+        self.charge_limit_reached = False  # Set once the pay-per-event budget is hit.
         self.stats = {
             "total_ads": 0,
             "unique_ads": 0,
@@ -1041,12 +1064,16 @@ class ScraperEngine:
         self, page_num: int, new_ads: List[Dict[str, Any]],
         all_ads: List[Dict[str, Any]], batcher: _DatasetBatcher
     ) -> None:
-        """Account for and buffer a page's new (already deduplicated) ads."""
+        """Account for, buffer, and charge for a page's new (deduplicated) ads."""
         if not new_ads:
             return
         all_ads.extend(new_ads)
         self._record_page(page_num, new_ads)
         await batcher.add(new_ads)
+        # Pay-per-event: charge per delivered listing (no-op off pay-per-event).
+        if await ApifyIO.charge(ApifyIO.EVENT_RESULT, len(new_ads)):
+            self.charge_limit_reached = True
+            self.logger.info("Pay-per-event budget limit reached - stopping scrape")
 
     async def _scrape_concurrent(
         self, search_args: Dict[str, Any], search_url: str
@@ -1098,10 +1125,19 @@ class ScraperEngine:
             tasks = [asyncio.create_task(fetch_page(p)) for p in range(2, last_page + 1)]
 
             # Process as results complete for incremental pushes and bounded memory.
-            for coro in asyncio.as_completed(tasks):
-                page_num, (cands, _t, _mp, page_ok) = await coro
-                if page_ok:
-                    await self._handle_page(page_num, self._dedup_and_collect(cands), all_ads, batcher)
+            try:
+                for coro in asyncio.as_completed(tasks):
+                    page_num, (cands, _t, _mp, page_ok) = await coro
+                    if page_ok:
+                        await self._handle_page(page_num, self._dedup_and_collect(cands), all_ads, batcher)
+                    if self.charge_limit_reached:
+                        break
+            finally:
+                # Cancel any still-pending page fetches (e.g. on early budget stop).
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
         await batcher.flush()
         self._log_scrape_summary(len(all_ads))
@@ -1123,7 +1159,7 @@ class ScraperEngine:
             page_ads, should_stop = self._scrape_single_page(page, search_args, search_url)
             await self._handle_page(page, page_ads, all_ads, batcher)
 
-            if should_stop or not page_ads or page >= max_pages:
+            if should_stop or not page_ads or page >= max_pages or self.charge_limit_reached:
                 break
 
             page += 1
@@ -1215,6 +1251,9 @@ async def _execute() -> None:
     """Load input, run the scraper, and store the output."""
     input_data = await ApifyIO.get_input()
     logger = Logger.setup(verbose=input_data.get("verbose", True))
+
+    # Pay-per-event: charge the one-off start fee (no-op off pay-per-event).
+    await ApifyIO.charge(ApifyIO.EVENT_ACTOR_START, 1)
 
     engine = ScraperEngine(Config(input_data), logger)
     result = await engine.run()
