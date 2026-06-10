@@ -134,14 +134,19 @@ class Config:
         self.limit_per_page = input_data.get("limit_per_page", 35)
         self.delay_between_pages = input_data.get("delay_between_pages", 0)  # 0 = no delay
 
+        # Proxy (Apify ProxyConfiguration). Required in practice to get past
+        # Leboncoin's Datadome anti-bot - without it every request is blocked.
+        self.proxy_configuration = input_data.get("proxyConfiguration")
+
         # Concurrency (parallel page fetching). Each worker uses its own isolated
-        # client/session, so this is safe. Kept conservative by default since all
-        # requests share the actor's IP, to limit anti-bot blocking.
-        DEFAULT_CONCURRENCY = 3
+        # client/session (and its own rotating proxy IP when a proxy is set), so
+        # this is safe. Higher with a proxy since load spreads across IPs; lower
+        # without one to limit anti-bot blocking.
+        default_concurrency = 8 if self.proxy_configuration else 3
         try:
-            self.concurrency = int(input_data.get("concurrency", DEFAULT_CONCURRENCY))
+            self.concurrency = int(input_data.get("concurrency", default_concurrency))
         except (TypeError, ValueError):
-            self.concurrency = DEFAULT_CONCURRENCY
+            self.concurrency = default_concurrency
         self.concurrency = max(1, min(self.concurrency, 30))
 
         # Age filtering (0 = disabled). Stops a search once enough consecutive
@@ -831,8 +836,18 @@ class ScraperEngine:
     def _batch_threshold(self) -> int:
         return self.BATCH_PAGES * self.config.limit_per_page
     
-    def _build_client(self) -> "lbc.Client":
+    def _build_client(self, proxy_url: Optional[str] = None) -> "lbc.Client":
         """Build a single lbc.Client (blocking - performs a cookie-init request)."""
+        if proxy_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(proxy_url)
+            proxy = lbc.Proxy(
+                host=parsed.hostname,
+                port=parsed.port or 8000,
+                username=parsed.username,
+                password=parsed.password,
+            )
+            return lbc.Client(proxy=proxy)
         return lbc.Client()
 
     async def initialize_client(self) -> None:
@@ -841,24 +856,47 @@ class ScraperEngine:
 
         Each client owns an isolated session (curl_cffi sessions are not safe for
         concurrent use, and the lbc 403-retry swaps the session), so a worker must
-        never share a client. Clients are created concurrently so the cookie-init
-        requests overlap instead of running back-to-back.
+        never share a client. When a proxy is configured we request a fresh URL per
+        client, spreading load across rotating IPs (essential to get past Datadome).
+        Clients are created concurrently so the cookie-init requests overlap.
         """
         pool_size = max(1, self.config.concurrency)
 
+        # Resolve one proxy URL per client (None means a direct connection).
+        proxy_urls: List[Optional[str]] = [None] * pool_size
+        if self.config.proxy_configuration and _HAS_APIFY:
+            try:
+                proxy_config = await Actor.create_proxy_configuration(
+                    actor_proxy_input=self.config.proxy_configuration
+                )
+                if proxy_config:
+                    proxy_urls = [await proxy_config.new_url() for _ in range(pool_size)]
+                    self.logger.info("Proxy configured successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to configure proxy: {e}")
+
         # Build clients concurrently (each constructor performs a blocking request).
         built = await asyncio.gather(
-            *[asyncio.to_thread(self._build_client) for _ in range(pool_size)],
+            *[asyncio.to_thread(self._build_client, purl) for purl in proxy_urls],
             return_exceptions=True
         )
         self.clients = [c for c in built if isinstance(c, lbc.Client)]
 
         # Fallback: ensure we always have at least one working client.
         if not self.clients:
-            self.clients = [self._build_client()]
+            self.clients = [self._build_client(None)]
 
         self.client = self.clients[0]
-        self.logger.info(f"Initialized {len(self.clients)} client(s)")
+        using_proxy = any(purl for purl in proxy_urls)
+        if not using_proxy:
+            self.logger.warning(
+                "Running WITHOUT a proxy - Leboncoin/Datadome will likely block requests. "
+                "Enable Apify Proxy (FR residential) in the input."
+            )
+        self.logger.info(
+            f"Initialized {len(self.clients)} client(s) "
+            f"{'with proxy' if using_proxy else 'without proxy'}"
+        )
 
     def _build_search_context(self, search_args: Dict[str, Any], search_url: Optional[str]) -> Dict[str, Any]:
         """Build the static per-page search context attached to each ad."""

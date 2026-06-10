@@ -46,8 +46,12 @@ No technical knowledge required.
     "https://www.leboncoin.fr/recherche?category=9&locations=Paris&price=250000-400000&rooms=2-4&real_estate_type=2"
   ],
   "limit_per_page": 35,
-  "concurrency": 3,
-  "delay_between_pages": 0
+  "delay_between_pages": 0,
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": ["RESIDENTIAL"],
+    "apifyProxyCountry": "FR"
+  }
 }
 ```
 
@@ -154,8 +158,8 @@ JSON, CSV, Excel, or programmatically through the Apify API.
 **Is scraping Leboncoin legal?**
 This actor collects only publicly visible data. Personal data (e.g. seller details) falls under GDPR, so make sure your storage and use have a lawful basis, and respect Leboncoin's Terms of Service.
 
-**Why are some runs blocked?**
-Leboncoin uses DataDome anti-bot protection, so very high request rates can occasionally be blocked. If you hit blocks, lower the `concurrency` setting or add a small `delay between pages`, and split very large jobs into smaller runs.
+**Why are some runs blocked (Datadome)?**
+Leboncoin uses Datadome anti-bot protection, which blocks datacenter IPs. This actor uses **Apify Proxy with French residential IPs by default** to get past it — keep proxy enabled. If you still hit occasional blocks on very large jobs, lower the `concurrency` setting or add a small `delay between pages`.
 
 ---
 
