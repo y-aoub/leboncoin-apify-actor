@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, Dict, List
 from datetime import datetime, timedelta
 
@@ -98,15 +99,50 @@ class Config:
         self.proxy_configuration = input_data.get("proxyConfiguration")
 
         # Concurrency (parallel page fetching). Each worker uses its own isolated
-        # client/session (and its own rotating proxy IP when a proxy is set), so
-        # this is safe. Higher with a proxy since load spreads across IPs; lower
-        # without one to limit anti-bot blocking.
-        default_concurrency = 8 if self.proxy_configuration else 3
-        try:
-            self.concurrency = int(input_data.get("concurrency", default_concurrency))
-        except (TypeError, ValueError):
-            self.concurrency = default_concurrency
-        self.concurrency = max(1, min(self.concurrency, 30))
+        # client/session (and its own rotating proxy IP when a proxy is set).
+        # By default it AUTO-SCALES to the run's allocated memory so the actor
+        # uses all the CPU the user paid for (Apify gives ~1 vCPU per 4 GB).
+        # An explicit `concurrency` input overrides the auto value.
+        self.memory_mbytes = self._detect_memory_mbytes()
+        explicit = input_data.get("concurrency")
+        if explicit:
+            try:
+                self.concurrency = int(explicit)
+            except (TypeError, ValueError):
+                self.concurrency = self._auto_concurrency()
+        else:
+            self.concurrency = self._auto_concurrency()
+        self.concurrency = max(1, min(self.concurrency, self.MAX_CONCURRENCY))
+
+    # Hard ceiling on parallel workers (each = one session + one proxy IP).
+    MAX_CONCURRENCY = 50
+
+    @staticmethod
+    def _detect_memory_mbytes() -> int:
+        """Memory (MB) Apify allocated to this run, or 0 if unknown (local)."""
+        for var in ("ACTOR_MEMORY_MBYTES", "APIFY_MEMORY_MBYTES"):
+            value = os.environ.get(var)
+            if value:
+                try:
+                    return int(value)
+                except ValueError:
+                    pass
+        return 0
+
+    def _auto_concurrency(self) -> int:
+        """
+        Pick a worker count that uses the run's full CPU allotment.
+
+        Apify scales CPU with memory (~1 vCPU / 4096 MB). With a proxy each
+        worker has its own rotating IP, so we scale up generously; without a
+        proxy we stay conservative to avoid Datadome blocks.
+        """
+        mem = self.memory_mbytes
+        if self.proxy_configuration:
+            # ~8 workers per 4 GB core; floor 8 so small runs still parallelize.
+            return max(8, min(mem // 512, self.MAX_CONCURRENCY)) if mem else 8
+        # No proxy: keep it low regardless of memory (anti-bot).
+        return max(3, min(mem // 2048, 8)) if mem else 3
 
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary."""
@@ -1260,7 +1296,20 @@ class ScraperEngine:
     async def run(self) -> Dict[str, Any]:
         """Execute scraping pipeline."""
         self.logger.info("Starting scraper")
-        
+
+        # Size the thread pool to the worker count so blocking lbc.search() calls
+        # (run via asyncio.to_thread) never queue behind the default 32-thread cap.
+        # This is how the run actually uses all the CPU the allocated memory buys.
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(
+            ThreadPoolExecutor(max_workers=self.config.concurrency + 4, thread_name_prefix="lbc")
+        )
+        mem = self.config.memory_mbytes
+        self.logger.info(
+            f"Concurrency: {self.config.concurrency} workers"
+            + (f" (auto-scaled to {mem} MB of memory)" if mem else "")
+        )
+
         # Initialize client once
         await self.initialize_client()
         
