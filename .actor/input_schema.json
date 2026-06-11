@@ -59,6 +59,14 @@
       "minimum": 0,
       "maximum": 365
     },
+    "concurrency": {
+      "title": "Concurrency (parallel pages)",
+      "type": "integer",
+      "description": "Number of pages fetched in parallel for much faster runs. Each worker uses an isolated session and its own rotating proxy IP. Leave empty for a smart default (8 with proxy, 3 without). Ignored when a per-page delay or max ad age is set.",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 30
+    },
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
