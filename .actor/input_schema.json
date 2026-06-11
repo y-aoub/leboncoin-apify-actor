@@ -1,6 +1,6 @@
 {
   "title": "Leboncoin Scraper",
-  "description": "Scrape Leboncoin listings (real estate, cars, classifieds) from any search URL",
+  "description": "Scrape Leboncoin listings from search URLs",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
@@ -42,20 +42,12 @@
     "delay_between_pages": {
       "title": "Delay between pages (seconds)",
       "type": "number",
-      "description": "Wait time between each page (0 = maximum speed recommended). Note: setting a delay disables parallel fetching and scrapes pages one by one.",
+      "description": "Wait time between each page (0 = maximum speed recommended)",
       "editor": "number",
       "default": 0,
       "prefill": 0,
       "minimum": 0,
       "maximum": 5
-    },
-    "concurrency": {
-      "title": "Concurrency (parallel pages)",
-      "type": "integer",
-      "description": "Number of pages to fetch in parallel for much faster runs. Each worker uses an isolated session and a separate rotating proxy IP. Leave empty for a smart default (8 with a proxy, 3 without). Ignored when a per-page delay or max ad age is set.",
-      "editor": "number",
-      "minimum": 1,
-      "maximum": 30
     },
     "max_age_days": {
       "title": "Max ad age (days)",
@@ -70,14 +62,9 @@
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
-      "description": "Proxy used to reach Leboncoin. Apify Proxy with FR residential IPs is enabled by default and is REQUIRED to get past Leboncoin's Datadome anti-bot - disabling it will cause every run to be blocked.",
+      "description": "Use proxies to avoid blocking (recommended for high volume)",
       "editor": "proxy",
       "sectionCaption": "🔒 Anti-blocking protection",
-      "default": {
-        "useApifyProxy": true,
-        "apifyProxyGroups": ["RESIDENTIAL"],
-        "apifyProxyCountry": "FR"
-      },
       "prefill": {
         "useApifyProxy": true,
         "apifyProxyGroups": ["RESIDENTIAL"],

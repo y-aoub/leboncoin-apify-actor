@@ -1,18 +1,60 @@
 {
   "actorSpecification": 1,
   "name": "leboncoin-universal-scraper",
-  "title": "Leboncoin Scraper - Real Estate, Cars & Classifieds",
-  "description": "Leboncoin scraper for listings, real estate, cars & classifieds. Extract price, location, images, dates & seller data from any search URL. Export to JSON/CSV — no code, no Leboncoin API key.",
-  "categories": ["REAL_ESTATE", "ECOMMERCE", "LEAD_GENERATION"],
+  "title": "Leboncoin Universal Scraper",
+  "description": "Extract unlimited Leboncoin listings automatically. Simply paste your search URL and get structured data in minutes. Perfect for market analysis, price monitoring, and lead generation.",
   "version": "1.0.0",
   "meta": {
     "templateId": "python-start"
   },
   "input": "./input_schema.json",
-  "output": "./output_schema.json",
   "dockerfile": "./Dockerfile",
   "readme": "./README.md",
   "storages": {
-    "dataset": "./dataset_schema.json"
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Leboncoin Ads Dataset",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": [
+              "id",
+              "url",
+              "subject",
+              "price",
+              "city",
+              "zipcode",
+              "index_date"
+            ]
+          },
+          "display": {
+            "component": "table",
+            "properties": {
+              "id": {
+                "label": "ID",
+                "format": "text"
+              },
+              "subject": {
+                "label": "Title",
+                "format": "text"
+              },
+              "price": {
+                "label": "Price (€)",
+                "format": "number"
+              },
+              "city": {
+                "label": "City",
+                "format": "text"
+              },
+              "url": {
+                "label": "URL",
+                "format": "link"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
