@@ -954,19 +954,19 @@ class ScraperEngine:
         }
 
     def _fetch_page_candidates(
-        self, client: "lbc.Client", page_num: int, search_url: Optional[str]
+        self, client: "lbc.Client", search_args: Dict[str, Any],
+        page_num: int, search_url: Optional[str]
     ) -> tuple[List[Dict[str, Any]], Optional[int], Optional[int], bool]:
         """
         Fetch and transform one page WITHOUT touching shared mutable state.
 
         Runs inside a worker thread (asyncio.to_thread), so deduplication and
-        stats counting are deferred to the async coordinator.
+        stats counting are deferred to the async coordinator. Takes the page's
+        own search_args, so pages from different URLs can run concurrently.
         Returns (candidate_ads, total, max_pages, ok).
         """
         try:
-            search_args = self.config.search_args.copy()
-            search_args['page'] = page_num
-            search_args['limit'] = self.config.limit_per_page
+            search_args = {**search_args, 'page': page_num, 'limit': self.config.limit_per_page}
 
             result = client.search(**search_args)
             total = getattr(result, 'total', None)
@@ -1016,81 +1016,83 @@ class ScraperEngine:
         self.stats["pages_processed"] += 1
         self.logger.info(f"Page {page_num}: {len(new_ads)} ads extracted")
 
-    async def _scrape_concurrent(self) -> int:
+    async def _scrape_urls_concurrent(self, url_specs: List[tuple]) -> int:
         """
-        Fetch pages in parallel using the client pool; returns the number of
-        ads scraped. Ads are pushed to the dataset in batches and NEVER kept
-        in memory for the whole run (memory stays O(batch), not O(total)).
+        Scrape ALL URLs and pages through one global pool, keeping every worker
+        busy for the whole run (no idle "tail" between URLs, no per-URL restart).
+
+        How it works:
+          * A global page queue is seeded with page 1 of every URL (discovery).
+          * One worker per client pulls (search_args, url, page) jobs, fetches in
+            a thread, and hands the result back through a small bounded queue
+            (backpressure -> memory stays O(workers + batch)).
+          * When a page-1 result reveals a URL's real page count, the coordinator
+            enqueues that URL's remaining pages as more jobs.
+          * Dedup, stats and batched dataset pushes happen only in the coordinator.
+
+        Returns the total number of ads scraped.
         """
         scraped = 0
         batch_ads: List[Dict[str, Any]] = []
         batch_threshold = 10 * self.config.limit_per_page
-        search_url = self.config.direct_url
-        max_pages = self.config.max_pages if self.config.max_pages > 0 else 99999
+        max_pages_cfg = self.config.max_pages if self.config.max_pages > 0 else 99999
 
-        self.logger.info(f"Starting concurrent scraping ({len(self.clients)} workers)")
+        page_queue: asyncio.Queue = asyncio.Queue()
+        results_queue: asyncio.Queue = asyncio.Queue(maxsize=len(self.clients))
 
-        # Page 1 reveals the real page count.
-        candidates, total, result_max_pages, ok = await asyncio.to_thread(
-            self._fetch_page_candidates, self.clients[0], 1, search_url
+        # Seed discovery: page 1 of each URL. `outstanding` tracks jobs enqueued
+        # but not yet consumed as results, and drives termination.
+        for search_args, url in url_specs:
+            page_queue.put_nowait((search_args, url, 1))
+        outstanding = len(url_specs)
+
+        self.logger.info(
+            f"Starting concurrent scraping ({len(self.clients)} workers, "
+            f"{len(url_specs)} search URL(s))"
         )
-        if not ok:
-            return scraped
 
-        if total is not None and result_max_pages is not None:
-            self.total_ads_available = total
-            self.logger.info(f"Found {total} ads in {result_max_pages} pages")
+        async def worker(client):
+            while True:
+                item = await page_queue.get()
+                if item is None:  # shutdown sentinel
+                    return
+                search_args, url, page = item
+                result = await asyncio.to_thread(
+                    self._fetch_page_candidates, client, search_args, page, url
+                )
+                await results_queue.put((search_args, url, page, result))
 
-        first_new = self._dedup_and_collect(candidates)
-        if first_new:
-            scraped += len(first_new)
-            batch_ads.extend(first_new)
-            self._record_page(1, first_new)
+        workers = [asyncio.create_task(worker(c)) for c in self.clients]
+        try:
+            while outstanding > 0:
+                search_args, url, page, (cands, total, result_max_pages, ok) = await results_queue.get()
+                outstanding -= 1
+                if not ok:
+                    continue
 
-        last_page = min(max_pages, result_max_pages) if result_max_pages else max_pages
+                # On page 1, learn how many pages this URL has and queue the rest.
+                if page == 1:
+                    if total is not None:
+                        self.total_ads_available = (self.total_ads_available or 0) + total
+                    last_page = min(max_pages_cfg, result_max_pages) if result_max_pages else max_pages_cfg
+                    if cands and last_page > 1:
+                        for p in range(2, last_page + 1):
+                            page_queue.put_nowait((search_args, url, p))
+                            outstanding += 1
 
-        # Fetch remaining pages concurrently with a bounded worker pool: one
-        # worker per client, pages pulled from a queue, results handed to the
-        # coordinator through a SMALL queue (backpressure). Nothing retains a
-        # page's ads after they are processed, so memory stays O(workers + batch)
-        # regardless of how many pages the run has.
-        if candidates and last_page > 1:
-            page_queue: asyncio.Queue = asyncio.Queue()
-            for p in range(2, last_page + 1):
-                page_queue.put_nowait(p)
-            results_queue: asyncio.Queue = asyncio.Queue(maxsize=len(self.clients))
-            remaining = last_page - 1
-
-            async def worker(client):
-                while True:
-                    try:
-                        page_num = page_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        return
-                    result = await asyncio.to_thread(
-                        self._fetch_page_candidates, client, page_num, search_url
-                    )
-                    await results_queue.put((page_num, result))
-
-            workers = [asyncio.create_task(worker(c)) for c in self.clients]
-            try:
-                for _ in range(remaining):
-                    page_num, (cands, _t, _mp, page_ok) = await results_queue.get()
-                    if not page_ok:
-                        continue
-                    new_ads = self._dedup_and_collect(cands)
-                    del cands  # free the page's raw candidates immediately
-                    if new_ads:
-                        scraped += len(new_ads)
-                        batch_ads.extend(new_ads)
-                        self._record_page(page_num, new_ads)
-                    if len(batch_ads) >= batch_threshold:
-                        await ApifyAdapter.push_data(batch_ads)
-                        batch_ads = []
-            finally:
-                for w in workers:
-                    w.cancel()
-                await asyncio.gather(*workers, return_exceptions=True)
+                new_ads = self._dedup_and_collect(cands)
+                del cands  # free the page's raw candidates immediately
+                if new_ads:
+                    scraped += len(new_ads)
+                    batch_ads.extend(new_ads)
+                    self._record_page(page, new_ads)
+                if len(batch_ads) >= batch_threshold:
+                    await ApifyAdapter.push_data(batch_ads)
+                    batch_ads = []
+        finally:
+            for _ in workers:
+                page_queue.put_nowait(None)
+            await asyncio.gather(*workers, return_exceptions=True)
 
         if batch_ads:
             await ApifyAdapter.push_data(batch_ads)
@@ -1198,25 +1200,16 @@ class ScraperEngine:
 
     async def scrape_from_url(self) -> int:
         """
-        Scrape all pages for the current search; returns the number of ads scraped.
-
-        Ads are streamed to the dataset in batches (memory stays O(batch)). The
-        concurrent path is used only when pages can safely be reordered: multiple
-        workers available, no per-page delay, and age filtering off (it relies on
-        strict sequential early-stop). Otherwise pages are scraped sequentially.
+        Scrape one search sequentially (page by page); returns the number of ads
+        scraped. Used when ordering matters (per-page delay or age filtering).
+        Ads are streamed to the dataset in batches, so memory stays O(batch).
+        The fast concurrent path lives in `_scrape_urls_concurrent` (driven by run).
         """
         # Validate search arguments
         if not self.config.search_args:
             self.logger.error("No search arguments provided")
             self.stats["errors"] += 1
             return 0
-
-        if (
-            len(self.clients) > 1
-            and self.config.delay_between_pages <= 0
-            and self.config.max_age_days <= 0
-        ):
-            return await self._scrape_concurrent()
 
         # If max_pages is 0, scrape all available pages (practically unlimited)
         max_pages = self.config.max_pages if self.config.max_pages > 0 else 99999
@@ -1271,60 +1264,56 @@ class ScraperEngine:
         # Initialize client once
         await self.initialize_client()
         
-        # Check if multiple URLs mode
         total_scraped = 0
-        if self.config.urls_list:
-            # Expand URLs by splitting price intervals if enabled
+        if not self.config.urls_list:
+            self.logger.error("No URLs provided in urls_list")
+        else:
+            # Expand each URL into price sub-intervals (to beat the 100-page cap).
             expanded_urls = []
             for url in self.config.urls_list:
                 if self.config.split_price_intervals:
-                    # Split price intervals to avoid 100-page limit
                     split_urls = PriceIntervalSplitter.generate_urls_with_price_intervals(
-                        url, 
-                        self.config.price_interval_size
+                        url, self.config.price_interval_size
                     )
                     if len(split_urls) > 1:
                         self.logger.info(f"Price interval detected: splitting into {len(split_urls)} sub-intervals")
                     expanded_urls.extend(split_urls)
                 else:
                     expanded_urls.append(url)
-            
-            # Multiple URLs mode (now with expanded price intervals)
-            self.logger.info(f"Processing {len(expanded_urls)} URLs ({len(self.config.urls_list)} original, {len(expanded_urls) - len(self.config.urls_list)} from price splitting)")
-            
-            for idx, url in enumerate(expanded_urls, 1):
-                self.logger.info(f"Processing URL {idx}/{len(expanded_urls)}: {url}")
-                
-                # Parse URL to search args
-                search_args = LeboncoinURLParser.parse_url_to_search_config(url)
-                
-                # Log parsed arguments for debugging
-                self.logger.info(f"Search arguments from URL {idx}: {search_args}")
-                
-                # Temporarily override config search args
-                original_search_args = self.config.search_args
-                original_direct_url = self.config.direct_url
-                
-                self.config.search_args = search_args
-                self.config.direct_url = url
-                
-                # Scrape this URL (ads are streamed to the dataset, not retained)
-                url_count = await self.scrape_from_url()
-                total_scraped += url_count
 
-                # Log progress
-                self.logger.info(f"URL {idx} completed: {url_count} ads extracted")
-                
-                # Restore original config
-                self.config.search_args = original_search_args
-                self.config.direct_url = original_direct_url
-                
-                # Small delay between URLs
-                if idx < len(expanded_urls) and self.config.delay_between_pages > 0:
-                    await asyncio.sleep(self.config.delay_between_pages)
-        
-        if not self.config.urls_list:
-            self.logger.error("No URLs provided in urls_list")
+            self.logger.info(f"Processing {len(expanded_urls)} URLs ({len(self.config.urls_list)} original, {len(expanded_urls) - len(self.config.urls_list)} from price splitting)")
+
+            # Parse every URL to search args up front.
+            url_specs = []
+            for url in expanded_urls:
+                search_args = LeboncoinURLParser.parse_url_to_search_config(url)
+                if search_args:
+                    url_specs.append((search_args, url))
+                else:
+                    self.logger.error(f"No search arguments parsed from URL: {url}")
+                    self.stats["errors"] += 1
+
+            # Fast path: scrape ALL URLs + pages through one global pool, keeping
+            # every worker busy across URLs. Safe only when pages can be reordered
+            # (more than one worker, no per-page delay, age filtering off).
+            use_concurrent = (
+                len(self.clients) > 1
+                and self.config.delay_between_pages <= 0
+                and self.config.max_age_days <= 0
+            )
+
+            if use_concurrent and url_specs:
+                total_scraped = await self._scrape_urls_concurrent(url_specs)
+            else:
+                # Sequential fallback (preserves per-page delay / age early-stop).
+                for idx, (search_args, url) in enumerate(url_specs, 1):
+                    self.logger.info(f"Processing URL {idx}/{len(url_specs)}: {url}")
+                    self.config.search_args = search_args
+                    self.config.direct_url = url
+                    total_scraped += await self.scrape_from_url()
+                    self.logger.info(f"URL {idx} completed")
+                    if idx < len(url_specs) and self.config.delay_between_pages > 0:
+                        await asyncio.sleep(self.config.delay_between_pages)
 
         # Final summary
         if self.total_ads_available is not None:
