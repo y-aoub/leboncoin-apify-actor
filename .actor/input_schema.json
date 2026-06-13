@@ -59,14 +59,6 @@
       "minimum": 0,
       "maximum": 365
     },
-    "concurrency": {
-      "title": "Concurrency (parallel pages)",
-      "type": "integer",
-      "description": "Number of pages fetched in parallel. Leave EMPTY to auto-scale to the memory you allocate to the run (more memory = more CPU = more workers = faster). Set a value only to override. With a proxy each worker uses its own rotating IP. Ignored when a per-page delay or max ad age is set.",
-      "editor": "number",
-      "minimum": 1,
-      "maximum": 50
-    },
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
